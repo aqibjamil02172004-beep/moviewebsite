@@ -395,12 +395,42 @@ function normalizeSearch(value) {
     .trim();
 }
 
+function normalizeCompact(value) {
+  return normalizeSearch(value).replace(/\s+/g, "");
+}
+
+function searchForms(value) {
+  const normalized = normalizeSearch(value);
+  const compact = normalizeCompact(value);
+  return Array.from(new Set([normalized, compact].filter(Boolean)));
+}
+
 function queryMatchesItem(item, query) {
-  const normalizedQuery = normalizeSearch(query);
-  if (!normalizedQuery) return true;
-  const haystack = normalizeSearch([item.title, item.year, item.type, item.source, ...(item.genres || [])].join(" "));
-  if (haystack.includes(normalizedQuery)) return true;
-  return normalizedQuery.split(" ").every((token) => haystack.includes(token));
+  const queryForms = searchForms(query);
+  if (!queryForms.length) return true;
+  const values = [item.title, item.year, item.type, item.source, item.imdbId, item.tmdbId, ...(item.genres || [])];
+  const haystacks = searchForms(values.join(" "));
+  return queryForms.some((form) => {
+    if (haystacks.some((haystack) => haystack.includes(form))) return true;
+    const tokens = normalizeSearch(form).split(" ").filter(Boolean);
+    return tokens.length > 1 && tokens.every((token) => haystacks.some((haystack) => haystack.includes(token)));
+  });
+}
+
+function searchQueryVariants(query) {
+  const normalized = normalizeSearch(query);
+  const compact = normalizeCompact(query);
+  const variants = [query.trim(), normalized, compact];
+  if (/^[a-z0-9]{2,8}$/i.test(compact)) {
+    variants.push(compact.split("").join("."));
+  }
+  return Array.from(new Set(variants.filter(Boolean)));
+}
+
+function usesPosterArtwork(item) {
+  if (!item?.posterUrl) return false;
+  if (!item.backdropUrl || item.backdropUrl === item.posterUrl) return true;
+  return item.source === "IMDb" || item.source === "Wikidata";
 }
 
 function debounce(fn, wait = 350) {
@@ -500,7 +530,7 @@ function render() {
   applyTheme();
 
   const visible = getVisibleItems();
-  if (!state.selected || !state.items.some((item) => item.id === state.selected.id)) {
+  if (!state.selected || !visible.some((item) => item.id === state.selected.id)) {
     state.selected = visible[0] || state.items[0] || null;
   }
 
@@ -511,6 +541,7 @@ function render() {
   renderHeadings(visible.length);
 
   els.hero.classList.toggle("is-search-mode", Boolean(state.query));
+  els.hero.classList.toggle("is-poster-art", usesPosterArtwork(state.selected));
   els.clearSearch.classList.toggle("is-visible", Boolean(state.query));
   els.emptyState.hidden = visible.length > 0;
 }
@@ -533,7 +564,8 @@ function renderHero(item) {
     return;
   }
 
-  els.hero.style.setProperty("--hero-image", `url("${item.backdropUrl || item.posterUrl}")`);
+  const heroImage = usesPosterArtwork(item) ? item.posterUrl : item.backdropUrl || item.posterUrl;
+  els.hero.style.setProperty("--hero-image", `url("${heroImage}")`);
   const genres = (item.genres || []).slice(0, 3);
   const canPlay = Boolean(item.tmdbId);
   els.hero.innerHTML = `
@@ -569,7 +601,7 @@ function renderGrid(items) {
         const status = item.tmdbId ? "Vidking ready" : "Needs TMDB ID";
         const source = item.source || APP_NAME;
         return `
-      <button class="poster-card ${isSearch ? "search-card" : ""}" type="button" data-action="select" data-id="${safeText(item.id)}">
+      <button class="poster-card ${isSearch ? "search-card" : ""} ${state.selected?.id === item.id ? "is-selected" : ""}" type="button" data-action="select" data-id="${safeText(item.id)}">
         <span class="poster-art">
           ${item.posterUrl ? `<img src="${safeText(item.posterUrl)}" alt="${safeText(item.title)} poster" loading="lazy" />` : ""}
           <span class="poster-badge">${safeText(scoreLabel(item))}</span>
@@ -610,8 +642,8 @@ function renderDetail(item) {
   ].filter(Boolean);
 
   els.detailPanel.innerHTML = `
-    <div class="panel-poster">
-      ${item.backdropUrl || item.posterUrl ? `<img src="${safeText(item.backdropUrl || item.posterUrl)}" alt="${safeText(item.title)} artwork" />` : ""}
+    <div class="panel-poster ${usesPosterArtwork(item) ? "is-poster" : ""}">
+      ${item.backdropUrl || item.posterUrl ? `<img src="${safeText(usesPosterArtwork(item) ? item.posterUrl : item.backdropUrl || item.posterUrl)}" alt="${safeText(item.title)} artwork" />` : ""}
     </div>
     <h2>${safeText(item.title)}</h2>
     <div class="panel-meta">
@@ -1101,13 +1133,16 @@ async function searchImdbSuggestions(query) {
 
 function searchResultScore(item, query) {
   const title = normalizeSearch(item.title);
+  const compactTitle = normalizeCompact(item.title);
   const normalizedQuery = normalizeSearch(query);
+  const compactQuery = normalizeCompact(query);
   const queryTokens = normalizedQuery.split(" ").filter(Boolean);
   let score = 0;
 
-  if (title === normalizedQuery) score += 120;
-  else if (title.startsWith(normalizedQuery)) score += 70;
-  else if (queryTokens.every((token) => title.includes(token))) score += 42;
+  if (title === normalizedQuery || compactTitle === compactQuery) score += 140;
+  else if (title.startsWith(normalizedQuery) || compactTitle.startsWith(compactQuery)) score += 80;
+  else if (title.includes(normalizedQuery) || compactTitle.includes(compactQuery)) score += 52;
+  else if (queryTokens.every((token) => title.includes(token) || compactTitle.includes(token))) score += 42;
 
   if (item.tmdbId) score += 26;
   if (item.type === "movie") score += 6;
@@ -1140,15 +1175,20 @@ async function searchRemote(query) {
   renderHeadings(getVisibleItems().length);
 
   const localMatches = SEED_TITLES.map(normalizeSeed).filter((item) => queryMatchesItem(item, query));
+  const variants = searchQueryVariants(query);
 
   const requests = [
-    state.profile.tmdbKey ? tmdbSearchPages(query) : Promise.resolve([]),
-    searchWikidataMedia(query),
-    searchImdbSuggestions(query),
-    fetch(`${TVMAZE_API}/search/shows?q=${encodeURIComponent(query)}`)
-      .then((response) => (response.ok ? response.json() : []))
-      .then((data) => data.map(normalizeTvMazeResult))
-      .catch(() => []),
+    state.profile.tmdbKey ? Promise.all(variants.map((variant) => tmdbSearchPages(variant))).then((lists) => lists.flat()) : Promise.resolve([]),
+    Promise.all(variants.map((variant) => searchWikidataMedia(variant))).then((lists) => lists.flat()),
+    Promise.all(variants.map((variant) => searchImdbSuggestions(variant))).then((lists) => lists.flat()),
+    Promise.all(
+      variants.map((variant) =>
+        fetch(`${TVMAZE_API}/search/shows?q=${encodeURIComponent(variant)}`)
+          .then((response) => (response.ok ? response.json() : []))
+          .then((data) => data.map(normalizeTvMazeResult))
+          .catch(() => []),
+      ),
+    ).then((lists) => lists.flat()),
   ];
 
   const results = await Promise.all(requests);
@@ -1306,6 +1346,70 @@ function scrollToTop(behavior = "smooth") {
   window.scrollTo({ top: 0, behavior });
 }
 
+function applySection(view, filter = view === "home" ? "all" : view) {
+  state.view = view;
+  state.filter = filter;
+  setActiveNav();
+  setActiveFilter();
+  state.selected = getVisibleItems()[0] || state.items[0] || null;
+  scrollToTop();
+  render();
+}
+
+function clearSearchState() {
+  els.searchInput.value = "";
+  state.query = "";
+  scrollToTop();
+  hydrateHome();
+}
+
+function selectedIndex() {
+  return getVisibleItems().findIndex((item) => item.id === state.selected?.id);
+}
+
+function selectRelativeItem(direction) {
+  const visible = getVisibleItems();
+  if (!visible.length) return;
+  const current = selectedIndex();
+  const nextIndex = current < 0 ? 0 : (current + direction + visible.length) % visible.length;
+  state.selected = visible[nextIndex];
+  state.currentSeason = 1;
+  state.currentEpisode = 1;
+  render();
+  enrichSelected(state.selected);
+}
+
+function goBackOneStep() {
+  if (!els.playerOverlay.hidden) {
+    closePlayer();
+    return;
+  }
+  if (els.settingsModal.open) {
+    els.settingsModal.close();
+    return;
+  }
+  if (state.query) {
+    clearSearchState();
+    return;
+  }
+  if (state.view !== "home" || state.filter !== "all") {
+    applySection("home", "all");
+    return;
+  }
+  if (document.activeElement === els.searchInput) {
+    els.searchInput.blur();
+  }
+}
+
+function isTypingTarget(target) {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target?.isContentEditable
+  );
+}
+
 function openSettings() {
   els.nameInput.value = state.profile.name || "";
   els.accentInput.value = state.profile.accent || DEFAULT_PROFILE.accent;
@@ -1376,14 +1480,8 @@ document.addEventListener("click", (event) => {
 
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {
-    state.view = button.dataset.view;
-    if (state.view === "movie" || state.view === "tv") state.filter = state.view;
-    if (state.view === "home") state.filter = "all";
-    setActiveNav();
-    setActiveFilter();
-    state.selected = getVisibleItems()[0] || state.items[0] || null;
-    scrollToTop();
-    render();
+    const view = button.dataset.view;
+    applySection(view, view === "home" || view === "watchlist" ? "all" : view);
   });
 });
 
@@ -1416,10 +1514,7 @@ els.searchInput.addEventListener(
 );
 
 els.clearSearch.addEventListener("click", () => {
-  els.searchInput.value = "";
-  state.query = "";
-  scrollToTop();
-  hydrateHome();
+  clearSearchState();
 });
 
 els.settingsButton.addEventListener("click", openSettings);
@@ -1450,7 +1545,69 @@ els.clearContinue.addEventListener("click", () => {
 
 els.closePlayer.addEventListener("click", closePlayer);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !els.playerOverlay.hidden) closePlayer();
+  const key = event.key.toLowerCase();
+  const typing = isTypingTarget(event.target);
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    goBackOneStep();
+    return;
+  }
+
+  if (typing || els.settingsModal.open || !els.playerOverlay.hidden) return;
+
+  if (event.key === "/") {
+    event.preventDefault();
+    els.searchInput.focus();
+    return;
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    playItem(state.selected);
+    return;
+  }
+
+  if (key === "w") {
+    event.preventDefault();
+    toggleWatchlist(state.selected);
+    return;
+  }
+
+  if (key === "h") {
+    event.preventDefault();
+    applySection("home", "all");
+    return;
+  }
+
+  if (key === "m") {
+    event.preventDefault();
+    applySection("movie", "movie");
+    return;
+  }
+
+  if (key === "t") {
+    event.preventDefault();
+    applySection("tv", "tv");
+    return;
+  }
+
+  if (key === "s") {
+    event.preventDefault();
+    openSettings();
+    return;
+  }
+
+  if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+    event.preventDefault();
+    selectRelativeItem(1);
+    return;
+  }
+
+  if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+    event.preventDefault();
+    selectRelativeItem(-1);
+  }
 });
 
 window.addEventListener("error", (event) => {
