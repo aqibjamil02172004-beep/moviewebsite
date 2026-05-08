@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="FlixDok is a premium movie and TV search interface with Vidking playback, local profiles, watchlists, ratings, posters, and episode selection."
+    />
+    <title>FlixDok</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary">
+        <a class="brand" href="#" aria-label="FlixDok home">
+          <span class="brand-mark">F</span>
+          <span>
+            <strong>FlixDok</strong>
+            <small>Private cinema</small>
+          </span>
+        </a>
+
+        <nav class="nav-list" aria-label="Sections">
+          <button class="nav-item is-active" type="button" data-view="home">
+            <span class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5v8a1.5 1.5 0 0 1-1.5 1.5h-5v-6h-5v6h-5A1.5 1.5 0 0 1 3 19.5z"/></svg>
+            </span>
+            Home
+          </button>
+          <button class="nav-item" type="button" data-view="movie">
+            <span class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm2 0v16M17 4v16M3 9h18M3 15h18"/></svg>
+            </span>
+            Movies
+          </button>
+          <button class="nav-item" type="button" data-view="tv">
+            <span class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8 6 5 3m11 3 3-3M4 8.5A2.5 2.5 0 0 1 6.5 6h11A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/></svg>
+            </span>
+            TV Shows
+          </button>
+          <button class="nav-item" type="button" data-view="watchlist">
+            <span class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-3.5L6 21z"/></svg>
+            </span>
+            Watchlist
+          </button>
+        </nav>
+
+        <div class="source-card">
+          <span class="source-dot" aria-hidden="true"></span>
+          <div>
+            <strong id="sourceTitle">Expanded search</strong>
+            <span id="sourceText">Wikidata and TVmaze search are active.</span>
+          </div>
+        </div>
+
+        <button class="profile-card" id="profileButton" type="button">
+          <span class="avatar" id="profileAvatar">F</span>
+          <span>
+            <strong id="profileName">FlixDok</strong>
+            <small>Local profile</small>
+          </span>
+        </button>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <label class="search-box" for="searchInput">
+            <span aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="m21 21-4.35-4.35M10.8 18a7.2 7.2 0 1 1 0-14.4 7.2 7.2 0 0 1 0 14.4Z"/></svg>
+            </span>
+            <input id="searchInput" autocomplete="off" placeholder="Search movies or TV shows" />
+            <button class="clear-search" id="clearSearch" type="button" aria-label="Clear search">
+              <svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg>
+            </button>
+          </label>
+
+          <div class="segmented" aria-label="Media type">
+            <button class="is-active" type="button" data-filter="all">All</button>
+            <button type="button" data-filter="movie">Movies</button>
+            <button type="button" data-filter="tv">TV</button>
+          </div>
+
+          <button class="icon-button" id="settingsButton" type="button" aria-label="Sources and profile settings">
+            <svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="m19.4 15 .1 2.2-2.1 2.1-2.2-.8a7.8 7.8 0 0 1-1.5.6L13 21.5h-2l-.7-2.4a7.8 7.8 0 0 1-1.5-.6l-2.2.8-2.1-2.1.1-2.2a8.8 8.8 0 0 1-.7-1.6L1.8 12l.7-2 2.1-.4c.2-.6.4-1.1.7-1.6l-.1-2.2 2.1-2.1 2.2.8c.5-.3 1-.5 1.5-.6L11.7 1.5h2l.7 2.4c.5.1 1 .3 1.5.6l2.2-.8 2.1 2.1-.1 2.2c.3.5.5 1 .7 1.6l2.1.4.7 2-2.1 1.4c-.2.6-.4 1.1-.7 1.6Z"/></svg>
+          </button>
+        </header>
+
+        <section class="hero" id="hero" aria-live="polite"></section>
+
+        <section class="content-area">
+          <div class="section-heading">
+            <div>
+              <p id="eyebrow">Ready to watch</p>
+              <h1 id="sectionTitle">Featured on FlixDok</h1>
+            </div>
+            <span id="resultCount">0 titles</span>
+          </div>
+
+          <div class="continue-row" id="continueRow" hidden>
+            <div class="section-heading compact">
+              <h2>Continue Watching</h2>
+              <button class="text-button" id="clearContinue" type="button">Clear</button>
+            </div>
+            <div class="mini-strip" id="continueStrip"></div>
+          </div>
+
+          <div class="poster-grid" id="posterGrid"></div>
+          <div class="empty-state" id="emptyState" hidden>
+            <strong>No titles found</strong>
+            <span>Try a clearer title, or add a free TMDB API key in settings for maximum coverage.</span>
+          </div>
+        </section>
+      </main>
+
+      <aside class="detail-panel" id="detailPanel" aria-label="Selected title"></aside>
+    </div>
+
+    <div class="player-overlay" id="playerOverlay" hidden>
+      <div class="player-topbar">
+        <div class="player-title">
+          <strong id="playerTitle">FlixDok Player</strong>
+          <span id="playerMeta"></span>
+        </div>
+        <div class="player-controls" id="playerControls"></div>
+        <button class="icon-button close-player" id="closePlayer" type="button" aria-label="Close player">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <iframe
+        id="playerFrame"
+        title="FlixDok Vidking player"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowfullscreen
+        referrerpolicy="no-referrer"
+      ></iframe>
+    </div>
+
+    <dialog class="modal" id="settingsModal">
+      <form method="dialog" class="modal-card" id="settingsForm">
+        <div class="modal-head">
+          <div>
+            <p>Local profile</p>
+            <h2>FlixDok settings</h2>
+          </div>
+          <button class="icon-button" value="cancel" type="submit" aria-label="Close settings">
+            <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>Profile name</span>
+            <input id="nameInput" maxlength="28" placeholder="FlixDok" />
+          </label>
+          <label>
+            <span>Accent color</span>
+            <input id="accentInput" type="color" />
+          </label>
+          <label>
+            <span>TMDB API key</span>
+            <input id="tmdbInput" autocomplete="off" placeholder="Free key for live movies and shows" />
+          </label>
+          <label>
+            <span>OMDb API key</span>
+            <input id="omdbInput" autocomplete="off" placeholder="Optional ratings enrichment" />
+          </label>
+          <label>
+            <span>Player accent</span>
+            <input id="playerColorInput" maxlength="6" placeholder="d8b15f" />
+          </label>
+          <label class="check-row">
+            <input id="autoPlayInput" type="checkbox" />
+            <span>Autoplay when the provider allows it</span>
+          </label>
+          <label class="check-row">
+            <input id="episodeSelectorInput" type="checkbox" />
+            <span>Show provider episode selector for TV</span>
+          </label>
+          <label class="check-row">
+            <input id="nextEpisodeInput" type="checkbox" />
+            <span>Enable provider next episode button</span>
+          </label>
+        </div>
+
+        <div class="api-note">
+          <strong>Free sources wired in:</strong>
+          <span>TMDB for broad discovery, Wikidata for no-key TMDB ID matching, TVmaze for show data, OMDb for optional details, Agregarr for IMDb ratings where possible.</span>
+        </div>
+
+        <div class="modal-actions">
+          <button class="secondary-button" id="resetProfile" type="button">Reset local data</button>
+          <button class="primary-button" value="default" type="submit">Save settings</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
