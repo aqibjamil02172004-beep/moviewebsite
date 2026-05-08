@@ -40,10 +40,6 @@ const IMDB_TO_TMDB = {
   tt1475582: 19885,
 };
 
-const PROVIDER_UNAVAILABLE = {
-  66732: { seasons: [5] },
-};
-
 const SEED_TITLES = [
   {
     type: "movie",
@@ -319,8 +315,6 @@ const els = {
   resetProfile: document.getElementById("resetProfile"),
   playerOverlay: document.getElementById("playerOverlay"),
   playerFrame: document.getElementById("playerFrame"),
-  playerMessage: document.getElementById("playerMessage"),
-  playerEpisodePanel: document.getElementById("playerEpisodePanel"),
   playerTitle: document.getElementById("playerTitle"),
   playerMeta: document.getElementById("playerMeta"),
   playerControls: document.getElementById("playerControls"),
@@ -340,7 +334,6 @@ const state = {
   searchToken: 0,
   detailToken: 0,
   detailLoadingId: "",
-  playerEpisodesOpen: false,
 };
 
 function loadProfile() {
@@ -699,13 +692,13 @@ function renderDetail(item) {
             <label>
               <span>Season</span>
               <select id="seasonSelect">
-                ${episodeModel.map((entry) => `<option value="${entry.number}" ${entry.number === selectedSeason ? "selected" : ""} ${seasonHasAvailableEpisodes(item, entry) ? "" : "disabled"}>${safeText(seasonLabel(item, entry))}</option>`).join("")}
+                ${episodeModel.map((entry) => `<option value="${entry.number}" ${entry.number === selectedSeason ? "selected" : ""}>Season ${entry.number}</option>`).join("")}
               </select>
             </label>
             <label>
               <span>Episode</span>
               <select id="episodeSelect">
-                ${episodeOptions.map((ep) => `<option value="${ep.number}" ${ep.number === selectedEpisode ? "selected" : ""} ${isEpisodeAvailable(item, ep) ? "" : "disabled"}>${safeText(episodeLabel(item, ep))}</option>`).join("")}
+                ${episodeOptions.map((ep) => `<option value="${ep.number}" ${ep.number === selectedEpisode ? "selected" : ""}>Episode ${ep.number}${ep.name ? ` - ${safeText(ep.name)}` : ""}</option>`).join("")}
               </select>
             </label>
           </div>
@@ -740,7 +733,7 @@ function renderDetail(item) {
     seasonSelect.addEventListener("change", () => {
       state.currentSeason = Number(seasonSelect.value);
       const nextSeason = getEpisodeModel(item).find((entry) => entry.number === state.currentSeason);
-      state.currentEpisode = firstEpisodeForSeason(item, nextSeason)?.number || 1;
+      state.currentEpisode = nextSeason?.episodes?.[0]?.number || 1;
       renderDetail(item);
     });
   }
@@ -781,10 +774,8 @@ function getEpisodeModel(item) {
     item.episodes.forEach((episode) => {
       if (!grouped.has(episode.season)) grouped.set(episode.season, []);
       grouped.get(episode.season).push({
-        season: episode.season,
         number: episode.number,
         name: episode.name,
-        airdate: episode.airdate || "",
       });
     });
     return Array.from(grouped.entries())
@@ -801,50 +792,13 @@ function getEpisodeModel(item) {
       .map((season) => ({
         number: season.number,
         episodes: Array.from({ length: season.episodes }, (_, index) => ({
-          season: season.number,
           number: index + 1,
           name: "",
         })),
       }));
   }
 
-  return [{ number: 1, episodes: Array.from({ length: 8 }, (_, index) => ({ season: 1, number: index + 1, name: "" })) }];
-}
-
-function unavailableOverride(item) {
-  return PROVIDER_UNAVAILABLE[Number(item?.tmdbId)] || {};
-}
-
-function isEpisodeFuture(episode) {
-  if (!episode?.airdate) return false;
-  const endOfAirDay = new Date(`${episode.airdate}T23:59:59`);
-  return Number.isFinite(endOfAirDay.valueOf()) && endOfAirDay > new Date();
-}
-
-function isEpisodeAvailable(item, episode) {
-  if (!item?.tmdbId || !episode) return false;
-  const override = unavailableOverride(item);
-  if ((override.seasons || []).includes(Number(episode.season))) return false;
-  if ((override.episodes || []).some((entry) => Number(entry.season) === Number(episode.season) && Number(entry.episode) === Number(episode.number))) return false;
-  return !isEpisodeFuture(episode);
-}
-
-function seasonHasAvailableEpisodes(item, season) {
-  return season?.episodes?.some((episode) => isEpisodeAvailable(item, episode));
-}
-
-function episodeLabel(item, episode) {
-  const title = `Episode ${episode.number}${episode.name ? ` - ${episode.name}` : ""}`;
-  return isEpisodeAvailable(item, episode) ? title : `${title} - Not available`;
-}
-
-function seasonLabel(item, season) {
-  const label = `Season ${season.number}`;
-  return seasonHasAvailableEpisodes(item, season) ? label : `${label} - Not available`;
-}
-
-function firstEpisodeForSeason(item, season) {
-  return season?.episodes?.find((episode) => isEpisodeAvailable(item, episode)) || season?.episodes?.[0] || null;
+  return [{ number: 1, episodes: Array.from({ length: 8 }, (_, index) => ({ number: index + 1, name: "" })) }];
 }
 
 function findItem(id) {
@@ -892,7 +846,7 @@ function buildVidkingUrl(item, season = 1, episode = 1) {
   params.set("color", cleanHex(state.profile.playerColor));
   if (state.profile.autoPlay) params.set("autoPlay", "true");
   if (item.type === "tv" && state.profile.nextEpisode) params.set("nextEpisode", "true");
-  if (item.type === "tv") params.set("episodeSelector", "false");
+  if (item.type === "tv" && state.profile.episodeSelector) params.set("episodeSelector", "true");
   return `${base}?${params.toString()}`;
 }
 
@@ -903,42 +857,17 @@ function playItem(item, opts = {}) {
     return;
   }
 
-  const model = getEpisodeModel(item);
-  const requestedSeason = item.type === "tv" ? Number(opts.season || state.currentSeason || 1) : 1;
-  const seasonModel = item.type === "tv" ? model.find((entry) => entry.number === requestedSeason) || model[0] : null;
-  const requestedEpisode = item.type === "tv" ? Number(opts.episode || state.currentEpisode || 1) : 1;
-  const episodeModel = item.type === "tv" ? seasonModel?.episodes?.find((entry) => entry.number === requestedEpisode) || firstEpisodeForSeason(item, seasonModel) : null;
-  const season = item.type === "tv" ? seasonModel?.number || requestedSeason : 1;
-  const episode = item.type === "tv" ? episodeModel?.number || requestedEpisode : 1;
-  const available = item.type !== "tv" || isEpisodeAvailable(item, episodeModel);
-
+  const season = item.type === "tv" ? opts.season || state.currentSeason || 1 : 1;
+  const episode = item.type === "tv" ? opts.episode || state.currentEpisode || 1 : 1;
   state.currentSeason = season;
   state.currentEpisode = episode;
 
+  const url = buildVidkingUrl(item, season, episode);
   els.playerTitle.textContent = item.title;
-  els.playerMeta.textContent = item.type === "tv" ? `Season ${season}, Episode ${episode}${available ? "" : " - Not available"}` : `${itemYear(item)} movie`;
+  els.playerMeta.textContent = item.type === "tv" ? `Season ${season}, Episode ${episode}` : `${itemYear(item)} movie`;
+  els.playerFrame.src = url;
   els.playerOverlay.hidden = false;
   renderPlayerControls(item);
-  renderPlayerEpisodePanel(item);
-
-  if (!available) {
-    els.playerFrame.src = "about:blank";
-    els.playerMessage.hidden = false;
-    els.playerMessage.innerHTML = `
-      <div>
-        <strong>Episode not available</strong>
-        <span>${safeText(item.title)} Season ${safeText(season)}, Episode ${safeText(episode)} is not available from the provider yet.</span>
-      </div>
-    `;
-    return;
-  }
-
-  els.playerMessage.hidden = true;
-  const url = buildVidkingUrl(item, season, episode);
-  els.playerFrame.src = "about:blank";
-  window.setTimeout(() => {
-    els.playerFrame.src = url;
-  }, 0);
   rememberPlay(item, season, episode);
   renderContinue();
 
@@ -954,35 +883,21 @@ function renderPlayerControls(item) {
 
   const model = getEpisodeModel(item);
   const season = model.find((entry) => entry.number === state.currentSeason) || model[0];
-  const selectedEpisode = season?.episodes?.find((entry) => entry.number === state.currentEpisode) || firstEpisodeForSeason(item, season);
   const seasonSelect = document.createElement("select");
   seasonSelect.setAttribute("aria-label", "Season");
-  seasonSelect.className = "player-select";
   seasonSelect.innerHTML = model
-    .map((entry) => `<option value="${entry.number}" ${entry.number === state.currentSeason ? "selected" : ""} ${seasonHasAvailableEpisodes(item, entry) ? "" : "disabled"}>${safeText(seasonLabel(item, entry))}</option>`)
+    .map((entry) => `<option value="${entry.number}" ${entry.number === state.currentSeason ? "selected" : ""}>Season ${entry.number}</option>`)
     .join("");
 
   const episodeSelect = document.createElement("select");
   episodeSelect.setAttribute("aria-label", "Episode");
-  episodeSelect.className = "player-select";
   episodeSelect.innerHTML = (season?.episodes || [])
-    .map((ep) => `<option value="${ep.number}" ${ep.number === selectedEpisode?.number ? "selected" : ""} ${isEpisodeAvailable(item, ep) ? "" : "disabled"}>${safeText(episodeLabel(item, ep))}</option>`)
+    .map((ep) => `<option value="${ep.number}" ${ep.number === state.currentEpisode ? "selected" : ""}>Episode ${ep.number}</option>`)
     .join("");
-
-  const episodePanelButton = document.createElement("button");
-  episodePanelButton.className = `chip-button player-panel-toggle ${state.playerEpisodesOpen ? "is-active" : ""}`;
-  episodePanelButton.type = "button";
-  episodePanelButton.dataset.action = "toggle-player-episodes";
-  episodePanelButton.dataset.id = item.id;
-  episodePanelButton.innerHTML = `
-    <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-    Episodes
-  `;
 
   seasonSelect.addEventListener("change", () => {
     state.currentSeason = Number(seasonSelect.value);
-    const nextSeason = getEpisodeModel(item).find((entry) => entry.number === state.currentSeason);
-    state.currentEpisode = firstEpisodeForSeason(item, nextSeason)?.number || 1;
+    state.currentEpisode = getEpisodeModel(item).find((entry) => entry.number === state.currentSeason)?.episodes?.[0]?.number || 1;
     playItem(item, { season: state.currentSeason, episode: state.currentEpisode });
   });
 
@@ -991,68 +906,12 @@ function renderPlayerControls(item) {
     playItem(item, { season: state.currentSeason, episode: state.currentEpisode });
   });
 
-  els.playerControls.append(seasonSelect, episodeSelect, episodePanelButton);
-}
-
-function renderPlayerEpisodePanel(item) {
-  if (item.type !== "tv" || !state.playerEpisodesOpen) {
-    els.playerEpisodePanel.hidden = true;
-    els.playerEpisodePanel.innerHTML = "";
-    return;
-  }
-
-  const model = getEpisodeModel(item);
-  const season = model.find((entry) => entry.number === state.currentSeason) || model[0];
-  const episodes = season?.episodes || [];
-  els.playerEpisodePanel.hidden = false;
-  els.playerEpisodePanel.innerHTML = `
-    <div class="player-episode-head">
-      <div>
-        <strong>${safeText(item.title)}</strong>
-        <span>${safeText(`${model.length} ${model.length === 1 ? "season" : "seasons"} available to browse`)}</span>
-      </div>
-      <button class="icon-button" type="button" data-action="toggle-player-episodes" data-id="${safeText(item.id)}" aria-label="Close episodes">
-        <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
-      </button>
-    </div>
-    <div class="player-season-grid" aria-label="Seasons">
-      ${model
-        .map(
-          (entry) => `
-        <button class="player-season-chip ${entry.number === state.currentSeason ? "is-active" : ""} ${seasonHasAvailableEpisodes(item, entry) ? "" : "is-unavailable"}" type="button" data-action="player-season" data-id="${safeText(item.id)}" data-season="${entry.number}" ${seasonHasAvailableEpisodes(item, entry) ? "" : "disabled"}>
-          <span>Season ${entry.number}</span>
-          ${seasonHasAvailableEpisodes(item, entry) ? "" : "<small>Not available</small>"}
-        </button>
-      `,
-        )
-        .join("")}
-    </div>
-    <div class="player-episode-scroll" aria-label="Episodes">
-      ${episodes
-        .map((episode) => {
-          const available = isEpisodeAvailable(item, episode);
-          return `
-        <button class="player-episode-row ${episode.number === state.currentEpisode ? "is-active" : ""} ${available ? "" : "is-unavailable"}" type="button" data-action="player-episode" data-id="${safeText(item.id)}" data-season="${season.number}" data-episode="${episode.number}" ${available ? "" : "disabled"}>
-          <span class="episode-index">E${episode.number}</span>
-          <span class="episode-copy">
-            <strong>${safeText(episode.name || `Episode ${episode.number}`)}</strong>
-            <span>${safeText(available ? episode.airdate || "Ready to play" : "Not available")}</span>
-          </span>
-          ${available ? "" : `<span class="episode-state">Not available</span>`}
-        </button>
-      `;
-        })
-        .join("")}
-    </div>
-  `;
+  els.playerControls.append(seasonSelect, episodeSelect);
 }
 
 function closePlayer() {
   els.playerOverlay.hidden = true;
   els.playerFrame.src = "about:blank";
-  els.playerMessage.hidden = true;
-  els.playerEpisodePanel.hidden = true;
-  state.playerEpisodesOpen = false;
   if (document.fullscreenElement) {
     document.exitFullscreen().catch?.(() => {});
   }
@@ -1404,7 +1263,6 @@ async function enrichSelected(item) {
             season: episode.season,
             number: episode.number,
             name: episode.name || "",
-            airdate: episode.airdate || "",
           }));
       }
     } catch (error) {
@@ -1428,7 +1286,6 @@ async function enrichSelected(item) {
             season: episode.season,
             number: episode.number,
             name: episode.name || "",
-            airdate: episode.airdate || "",
           }));
       }
     } catch (error) {
@@ -1632,32 +1489,6 @@ document.addEventListener("click", (event) => {
     case "toggle-watchlist":
       toggleWatchlist(item);
       break;
-    case "toggle-player-episodes": {
-      const playerItem = item || state.selected;
-      state.playerEpisodesOpen = !state.playerEpisodesOpen;
-      if (playerItem) {
-        renderPlayerControls(playerItem);
-        renderPlayerEpisodePanel(playerItem);
-      }
-      break;
-    }
-    case "player-season": {
-      const playerItem = item || state.selected;
-      if (!playerItem) break;
-      const seasonNumber = Number(button.dataset.season || 1);
-      const season = getEpisodeModel(playerItem).find((entry) => entry.number === seasonNumber);
-      const episode = firstEpisodeForSeason(playerItem, season);
-      state.playerEpisodesOpen = true;
-      playItem(playerItem, { season: seasonNumber, episode: episode?.number || 1 });
-      break;
-    }
-    case "player-episode": {
-      const playerItem = item || state.selected;
-      if (!playerItem) break;
-      state.playerEpisodesOpen = true;
-      playItem(playerItem, { season: Number(button.dataset.season || 1), episode: Number(button.dataset.episode || 1) });
-      break;
-    }
     case "attach-tmdb": {
       const input = document.getElementById("manualTmdbInput");
       const tmdbId = Number(input?.value || 0);
