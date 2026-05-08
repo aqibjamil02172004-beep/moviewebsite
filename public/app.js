@@ -299,8 +299,6 @@ const els = {
   profileButton: document.getElementById("profileButton"),
   profileName: document.getElementById("profileName"),
   profileAvatar: document.getElementById("profileAvatar"),
-  sourceTitle: document.getElementById("sourceTitle"),
-  sourceText: document.getElementById("sourceText"),
   settingsButton: document.getElementById("settingsButton"),
   settingsModal: document.getElementById("settingsModal"),
   settingsForm: document.getElementById("settingsForm"),
@@ -523,10 +521,6 @@ function applyTheme() {
   document.documentElement.style.setProperty("--accent", state.profile.accent || DEFAULT_PROFILE.accent);
   els.profileName.textContent = state.profile.name || APP_NAME;
   els.profileAvatar.textContent = (state.profile.name || APP_NAME).trim().slice(0, 1).toUpperCase();
-  els.sourceTitle.textContent = state.profile.tmdbKey ? "Live discovery" : "Expanded search";
-  els.sourceText.textContent = state.profile.tmdbKey
-    ? "TMDB, Wikidata, TVmaze, and ratings helpers are active."
-    : "Wikidata and TVmaze search are active. Add TMDB for the widest coverage.";
 }
 
 function render() {
@@ -546,7 +540,7 @@ function render() {
   els.hero.classList.toggle("is-search-mode", Boolean(state.query));
   els.hero.classList.toggle("is-poster-art", usesPosterArtwork(state.selected));
   els.clearSearch.classList.toggle("is-visible", Boolean(state.query));
-  els.emptyState.hidden = visible.length > 0;
+  els.emptyState.hidden = true;
 }
 
 function renderHeadings(count) {
@@ -557,7 +551,7 @@ function renderHeadings(count) {
     watchlist: "Your watchlist",
   };
   els.sectionTitle.textContent = titleMap[state.view] || `Featured on ${APP_NAME}`;
-  els.eyebrow.textContent = state.isSearching ? "Searching expanded sources" : state.profile.tmdbKey ? "Live and local" : "Expanded search";
+  els.eyebrow.textContent = state.isSearching ? "Searching" : state.query ? "Search results" : "Ready to watch";
   els.resultCount.textContent = `${count} ${count === 1 ? "title" : "titles"}`;
 }
 
@@ -846,8 +840,28 @@ function buildVidkingUrl(item, season = 1, episode = 1) {
   params.set("color", cleanHex(state.profile.playerColor));
   if (state.profile.autoPlay) params.set("autoPlay", "true");
   if (item.type === "tv" && state.profile.nextEpisode) params.set("nextEpisode", "true");
-  if (item.type === "tv" && state.profile.episodeSelector) params.set("episodeSelector", "true");
+  if (item.type === "tv") params.set("episodeSelector", "false");
   return `${base}?${params.toString()}`;
+}
+
+function currentEpisodeName(item, season, episode) {
+  const seasonModel = getEpisodeModel(item).find((entry) => entry.number === Number(season));
+  const episodeModel = seasonModel?.episodes?.find((entry) => entry.number === Number(episode));
+  return episodeModel?.name || "";
+}
+
+function syncPlayerLabels(item, season = state.currentSeason, episode = state.currentEpisode) {
+  if (!item) return;
+  els.playerTitle.textContent = item.title;
+  const episodeName = item.type === "tv" ? currentEpisodeName(item, season, episode) : "";
+  els.playerMeta.textContent =
+    item.type === "tv"
+      ? `Season ${season}, Episode ${episode}${episodeName ? ` - ${episodeName}` : ""}`
+      : `${itemYear(item)} movie`;
+  const seasonSelect = els.playerControls.querySelector('select[aria-label="Season"]');
+  const episodeSelect = els.playerControls.querySelector('select[aria-label="Episode"]');
+  if (seasonSelect) seasonSelect.value = String(season);
+  if (episodeSelect) episodeSelect.value = String(episode);
 }
 
 function playItem(item, opts = {}) {
@@ -863,8 +877,7 @@ function playItem(item, opts = {}) {
   state.currentEpisode = episode;
 
   const url = buildVidkingUrl(item, season, episode);
-  els.playerTitle.textContent = item.title;
-  els.playerMeta.textContent = item.type === "tv" ? `Season ${season}, Episode ${episode}` : `${itemYear(item)} movie`;
+  syncPlayerLabels(item, season, episode);
   els.playerFrame.src = url;
   els.playerOverlay.hidden = false;
   renderPlayerControls(item);
@@ -898,11 +911,13 @@ function renderPlayerControls(item) {
   seasonSelect.addEventListener("change", () => {
     state.currentSeason = Number(seasonSelect.value);
     state.currentEpisode = getEpisodeModel(item).find((entry) => entry.number === state.currentSeason)?.episodes?.[0]?.number || 1;
+    syncPlayerLabels(item, state.currentSeason, state.currentEpisode);
     playItem(item, { season: state.currentSeason, episode: state.currentEpisode });
   });
 
   episodeSelect.addEventListener("change", () => {
     state.currentEpisode = Number(episodeSelect.value);
+    syncPlayerLabels(item, state.currentSeason, state.currentEpisode);
     playItem(item, { season: state.currentSeason, episode: state.currentEpisode });
   });
 
@@ -915,6 +930,37 @@ function closePlayer() {
   if (document.fullscreenElement) {
     document.exitFullscreen().catch?.(() => {});
   }
+}
+
+function parsePlayerMessage(data) {
+  if (!data) return null;
+  const payload = typeof data === "string" ? (() => {
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  })() : data;
+  if (!payload || typeof payload !== "object") return null;
+
+  const candidates = [payload, payload.data, payload.detail, payload.progress, payload.media, payload.episode].filter(Boolean);
+  for (const candidate of candidates) {
+    const season = Number(candidate.season ?? candidate.s ?? candidate.seasonNumber);
+    const episode = Number(candidate.episode ?? candidate.e ?? candidate.episodeNumber);
+    if (Number.isFinite(season) && season > 0 && Number.isFinite(episode) && episode > 0) {
+      return { season, episode };
+    }
+  }
+  return null;
+}
+
+function handlePlayerMessage(event) {
+  if (els.playerOverlay.hidden || event.source !== els.playerFrame.contentWindow) return;
+  const update = parsePlayerMessage(event.data);
+  if (!update || state.selected?.type !== "tv") return;
+  state.currentSeason = update.season;
+  state.currentEpisode = update.episode;
+  syncPlayerLabels(state.selected, update.season, update.episode);
 }
 
 async function hydrateHome() {
@@ -1440,11 +1486,11 @@ function isTypingTarget(target) {
 function openSettings() {
   els.nameInput.value = state.profile.name || "";
   els.accentInput.value = state.profile.accent || DEFAULT_PROFILE.accent;
-  els.tmdbInput.value = state.profile.tmdbKey || "";
-  els.omdbInput.value = state.profile.omdbKey || "";
+  if (els.tmdbInput) els.tmdbInput.value = state.profile.tmdbKey || "";
+  if (els.omdbInput) els.omdbInput.value = state.profile.omdbKey || "";
   els.playerColorInput.value = cleanHex(state.profile.playerColor);
   els.autoPlayInput.checked = Boolean(state.profile.autoPlay);
-  els.episodeSelectorInput.checked = Boolean(state.profile.episodeSelector);
+  if (els.episodeSelectorInput) els.episodeSelectorInput.checked = Boolean(state.profile.episodeSelector);
   els.nextEpisodeInput.checked = Boolean(state.profile.nextEpisode);
   els.settingsModal.showModal();
 }
@@ -1454,11 +1500,11 @@ function saveSettings() {
     ...state.profile,
     name: els.nameInput.value.trim() || APP_NAME,
     accent: els.accentInput.value || DEFAULT_PROFILE.accent,
-    tmdbKey: els.tmdbInput.value.trim(),
-    omdbKey: els.omdbInput.value.trim(),
+    tmdbKey: els.tmdbInput ? els.tmdbInput.value.trim() : state.profile.tmdbKey,
+    omdbKey: els.omdbInput ? els.omdbInput.value.trim() : state.profile.omdbKey,
     playerColor: cleanHex(els.playerColorInput.value),
     autoPlay: els.autoPlayInput.checked,
-    episodeSelector: els.episodeSelectorInput.checked,
+    episodeSelector: els.episodeSelectorInput ? els.episodeSelectorInput.checked : false,
     nextEpisode: els.nextEpisodeInput.checked,
   };
   saveProfile();
@@ -1477,6 +1523,7 @@ document.addEventListener("click", (event) => {
       state.currentEpisode = 1;
       render();
       enrichSelected(item);
+      if (item?.tmdbId) playItem(item);
       break;
     case "play":
       if (item) playItem(item);
@@ -1572,6 +1619,7 @@ els.clearContinue.addEventListener("click", () => {
 });
 
 els.closePlayer.addEventListener("click", closePlayer);
+window.addEventListener("message", handlePlayerMessage);
 document.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   const typing = isTypingTarget(event.target);

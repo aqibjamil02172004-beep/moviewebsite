@@ -48,14 +48,6 @@
           </button>
         </nav>
 
-        <div class="source-card">
-          <span class="source-dot" aria-hidden="true"></span>
-          <div>
-            <strong id="sourceTitle">Expanded search</strong>
-            <span id="sourceText">Wikidata and TVmaze search are active.</span>
-          </div>
-        </div>
-
         <button class="profile-card" id="profileButton" type="button">
           <span class="avatar" id="profileAvatar">F</span>
           <span>
@@ -121,8 +113,6 @@
 
           <div class="poster-grid" id="posterGrid"></div>
           <div class="empty-state" id="emptyState" hidden>
-            <strong>No titles found</strong>
-            <span>Try a clearer title, or add a free TMDB API key in settings for maximum coverage.</span>
           </div>
         </section>
       </main>
@@ -172,14 +162,6 @@
             <input id="accentInput" type="color" />
           </label>
           <label>
-            <span>TMDB API key</span>
-            <input id="tmdbInput" autocomplete="off" placeholder="Free key for live movies and shows" />
-          </label>
-          <label>
-            <span>OMDb API key</span>
-            <input id="omdbInput" autocomplete="off" placeholder="Optional ratings enrichment" />
-          </label>
-          <label>
             <span>Player accent</span>
             <input id="playerColorInput" maxlength="6" placeholder="d8b15f" />
           </label>
@@ -188,18 +170,9 @@
             <span>Autoplay when the provider allows it</span>
           </label>
           <label class="check-row">
-            <input id="episodeSelectorInput" type="checkbox" />
-            <span>Show provider episode selector for TV</span>
-          </label>
-          <label class="check-row">
             <input id="nextEpisodeInput" type="checkbox" />
             <span>Enable provider next episode button</span>
           </label>
-        </div>
-
-        <div class="api-note">
-          <strong>Free sources wired in:</strong>
-          <span>TMDB for broad discovery, Wikidata for no-key TMDB ID matching, TVmaze for show data, OMDb for optional details, Agregarr for IMDb ratings where possible.</span>
         </div>
 
         <div class="modal-actions">
