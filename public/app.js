@@ -29,6 +29,9 @@ const DEFAULT_PROFILE = {
   continueWatching: [],
 };
 
+const CATEGORY_VIEWS = new Set(["bollywood", "hollywood"]);
+const CATEGORY_PAGE_SIZE = 8;
+
 const IMDB_TO_TMDB = {
   tt0903747: 1396,
   tt0944947: 1399,
@@ -238,6 +241,174 @@ const SEED_TITLES = [
     overview: "Three friends challenge a rigid education system while chasing their own meaning of success.",
   },
   {
+    type: "movie",
+    tmdbId: 297222,
+    imdbId: "tt2338151",
+    title: "PK",
+    year: "2014",
+    region: "Bollywood",
+    genres: ["Comedy", "Drama"],
+    rating: 8.1,
+    runtime: "2h 33m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BMTYzOTE2NjkxN15BMl5BanBnXkFtZTgwMDgzMTg0MzE@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BMTYzOTE2NjkxN15BMl5BanBnXkFtZTgwMDgzMTg0MzE@._V1_.jpg",
+    overview: "A curious stranger questions social habits, faith, and fear with disarming honesty.",
+  },
+  {
+    type: "movie",
+    tmdbId: 348892,
+    imdbId: "tt3863552",
+    title: "Bajrangi Bhaijaan",
+    year: "2015",
+    region: "Bollywood",
+    genres: ["Adventure", "Drama"],
+    rating: 8.1,
+    runtime: "2h 43m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BYzVjMjZiNGUtZjZiNy00Yzg4LWEzYzYtMmI1NDg5NWNiNjUwXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BYzVjMjZiNGUtZjZiNy00Yzg4LWEzYzYtMmI1NDg5NWNiNjUwXkEyXkFqcGc@._V1_.jpg",
+    overview: "A devoted man crosses borders to reunite a lost child with her family.",
+  },
+  {
+    type: "movie",
+    tmdbId: 496331,
+    imdbId: "tt6277462",
+    title: "Brahmastra Part One: Shiva",
+    year: "2022",
+    region: "Bollywood",
+    genres: ["Fantasy", "Action"],
+    rating: 5.6,
+    runtime: "2h 47m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BZjZiOTE2Y2ItMTY4My00ZjE0LTlkZTAtYWY4M2I4OTVkMjQ5XkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BZjZiOTE2Y2ItMTY4My00ZjE0LTlkZTAtYWY4M2I4OTVkMjQ5XkEyXkFqcGc@._V1_.jpg",
+    overview: "A young man discovers a hidden power connected to an ancient celestial weapon.",
+  },
+  {
+    type: "movie",
+    tmdbId: 534780,
+    imdbId: "tt8108198",
+    title: "Andhadhun",
+    year: "2018",
+    region: "Bollywood",
+    genres: ["Thriller", "Mystery"],
+    rating: 8.2,
+    runtime: "2h 19m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BZjc5OWIzOTgtMmM2ZS00ZjZhLTkyZWItMTFjYTc0NWQ4NzhkXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BZjc5OWIzOTgtMmM2ZS00ZjZhLTkyZWItMTFjYTc0NWQ4NzhkXkEyXkFqcGc@._V1_.jpg",
+    overview: "A pianist's carefully guarded act pulls him into a murder mystery.",
+  },
+  {
+    type: "movie",
+    tmdbId: 352173,
+    imdbId: "tt4430212",
+    title: "Drishyam",
+    year: "2015",
+    region: "Bollywood",
+    genres: ["Crime", "Thriller"],
+    rating: 8.2,
+    runtime: "2h 43m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BMDRlZWFkMjEtYmYyZi00MmE5LWIzMzUtYmM2N2M5Y2UxZDJjXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BMDRlZWFkMjEtYmYyZi00MmE5LWIzMzUtYmM2N2M5Y2UxZDJjXkEyXkFqcGc@._V1_.jpg",
+    overview: "A family man builds an airtight cover story after a desperate night changes everything.",
+  },
+  {
+    type: "movie",
+    tmdbId: 61202,
+    imdbId: "tt1562872",
+    title: "Zindagi Na Milegi Dobara",
+    year: "2011",
+    region: "Bollywood",
+    genres: ["Drama", "Comedy"],
+    rating: 8.2,
+    runtime: "2h 35m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BOGIzYzg5NzItNDRkYS00NmIzLTk3NzQtZWYwY2VlZDhiYWQ4XkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BOGIzYzg5NzItNDRkYS00NmIzLTk3NzQtZWYwY2VlZDhiYWQ4XkEyXkFqcGc@._V1_.jpg",
+    overview: "Three friends turn a road trip into a reckoning with love, fear, and adulthood.",
+  },
+  {
+    type: "movie",
+    tmdbId: 27205,
+    imdbId: "tt1375666",
+    title: "Inception",
+    year: "2010",
+    region: "Hollywood",
+    genres: ["Sci-Fi", "Thriller"],
+    rating: 8.4,
+    runtime: "2h 28m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_.jpg",
+    overview: "A thief who steals secrets through dreams is offered a chance to erase his past.",
+  },
+  {
+    type: "movie",
+    tmdbId: 603,
+    imdbId: "tt0133093",
+    title: "The Matrix",
+    year: "1999",
+    region: "Hollywood",
+    genres: ["Sci-Fi", "Action"],
+    rating: 8.2,
+    runtime: "2h 16m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BN2NmN2VhMTQtMDNiOS00NDlhLTliMjgtODE2ZTY0ODQyNDRhXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BN2NmN2VhMTQtMDNiOS00NDlhLTliMjgtODE2ZTY0ODQyNDRhXkEyXkFqcGc@._V1_.jpg",
+    overview: "A hacker discovers the world he knows is a simulation built to hide a war for humanity.",
+  },
+  {
+    type: "movie",
+    tmdbId: 76600,
+    imdbId: "tt1630029",
+    title: "Avatar: The Way of Water",
+    year: "2022",
+    region: "Hollywood",
+    genres: ["Sci-Fi", "Adventure"],
+    rating: 7.5,
+    runtime: "3h 12m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BNWI0Y2NkOWEtMmM2OC00MjQ3LWI1YzItZGQxYzQ3NzI4NWZmXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BNWI0Y2NkOWEtMmM2OC00MjQ3LWI1YzItZGQxYzQ3NzI4NWZmXkEyXkFqcGc@._V1_.jpg",
+    overview: "Jake Sully and his family seek refuge with ocean clans as an old threat returns.",
+  },
+  {
+    type: "movie",
+    tmdbId: 550,
+    imdbId: "tt0137523",
+    title: "Fight Club",
+    year: "1999",
+    region: "Hollywood",
+    genres: ["Drama", "Thriller"],
+    rating: 8.4,
+    runtime: "2h 19m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BOTgyOGQ1NDItNGU3Ny00MjU3LTg2YWEtNmEyYjBiMjI1Y2M5XkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BOTgyOGQ1NDItNGU3Ny00MjU3LTg2YWEtNmEyYjBiMjI1Y2M5XkEyXkFqcGc@._V1_.jpg",
+    overview: "An office worker and a magnetic stranger create an underground club that spirals out of control.",
+  },
+  {
+    type: "movie",
+    tmdbId: 238,
+    imdbId: "tt0068646",
+    title: "The Godfather",
+    year: "1972",
+    region: "Hollywood",
+    genres: ["Crime", "Drama"],
+    rating: 8.7,
+    runtime: "2h 55m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BNGEwYjgwOGQtYjg5ZS00Njc1LTk2ZGEtM2QwZWQ2NjdhZTE5XkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BNGEwYjgwOGQtYjg5ZS00Njc1LTk2ZGEtM2QwZWQ2NjdhZTE5XkEyXkFqcGc@._V1_.jpg",
+    overview: "The aging head of a crime family transfers power while his reluctant son is drawn in.",
+  },
+  {
+    type: "movie",
+    tmdbId: 76341,
+    imdbId: "tt1392190",
+    title: "Mad Max: Fury Road",
+    year: "2015",
+    region: "Hollywood",
+    genres: ["Action", "Adventure"],
+    rating: 7.6,
+    runtime: "2h 1m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BZDRkODJhOTgtOTc1OC00NTgzLTk4NjItNDgxZDY4YjlmNDY2XkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BZDRkODJhOTgtOTc1OC00NTgzLTk4NjItNDgxZDY4YjlmNDY2XkEyXkFqcGc@._V1_.jpg",
+    overview: "A rebel warrior and a haunted drifter race across a wasteland to escape a tyrant.",
+  },
+  {
     type: "tv",
     tmdbId: 1396,
     tvmazeId: 169,
@@ -374,6 +545,8 @@ const els = {
   browseBlock: document.getElementById("browseBlock"),
   quickHelp: document.getElementById("quickHelp"),
   posterGrid: document.getElementById("posterGrid"),
+  categoryTools: document.getElementById("categoryTools"),
+  categoryMore: document.getElementById("categoryMore"),
   detailPanel: document.getElementById("detailPanel"),
   searchInput: document.getElementById("searchInput"),
   clearSearch: document.getElementById("clearSearch"),
@@ -399,6 +572,9 @@ const els = {
   episodeSelectorInput: document.getElementById("episodeSelectorInput"),
   nextEpisodeInput: document.getElementById("nextEpisodeInput"),
   resetProfile: document.getElementById("resetProfile"),
+  shortcutsButton: document.getElementById("shortcutsButton"),
+  shortcutsModal: document.getElementById("shortcutsModal"),
+  closeShortcuts: document.getElementById("closeShortcuts"),
   playerOverlay: document.getElementById("playerOverlay"),
   playerFrame: document.getElementById("playerFrame"),
   playerTitle: document.getElementById("playerTitle"),
@@ -423,6 +599,13 @@ const state = {
   detailToken: 0,
   detailLoadingId: "",
   heroIndex: 0,
+  heroItemId: "",
+  heroTransitioning: false,
+  categoryQuery: "",
+  categoryGenre: "all",
+  categorySort: "featured",
+  categoryTab: "trending",
+  categoryLimit: CATEGORY_PAGE_SIZE,
 };
 
 function loadProfile() {
@@ -443,14 +626,14 @@ function saveProfile() {
 function normalizeSeed(item) {
   const posterUrl = item.posterUrl || imageUrl(item.poster, "w500");
   const backdropUrl = item.backdropUrl || imageUrl(item.backdrop || item.poster, "original");
-  return {
+  const normalized = {
     ...item,
-    id: `${item.type}-${item.tmdbId}`,
     posterUrl,
     backdropUrl,
     region: item.region || (item.type === "movie" ? "Hollywood" : "TV"),
     source: APP_NAME,
   };
+  return { ...normalized, id: itemDisplayId(normalized) };
 }
 
 function imageUrl(path, size = "w500") {
@@ -591,9 +774,12 @@ function mergeItems(...lists) {
 
 function getVisibleItems() {
   const query = state.query.trim();
+  const categoryRegion = categoryRegionForView();
   let items = state.items;
 
-  if (state.view === "watchlist") {
+  if (categoryRegion) {
+    items = items.filter((item) => item.type === "movie" && item.region === categoryRegion);
+  } else if (state.view === "watchlist") {
     const saved = new Set(state.profile.watchlist);
     items = items.filter((item) => saved.has(item.id));
   } else if (state.view === "movie" || state.view === "tv") {
@@ -608,7 +794,55 @@ function getVisibleItems() {
     items = items.filter((item) => queryMatchesItem(item, query));
   }
 
+  if (categoryRegion) {
+    const categorySearch = state.categoryQuery.trim();
+    if (categorySearch) items = items.filter((item) => queryMatchesItem(item, categorySearch));
+    if (state.categoryGenre !== "all") {
+      items = items.filter((item) => (item.genres || []).some((genre) => normalizeSearch(genre) === state.categoryGenre));
+    }
+  }
+
   return items;
+}
+
+function isCategoryView(view = state.view) {
+  return CATEGORY_VIEWS.has(view);
+}
+
+function categoryRegionForView(view = state.view) {
+  if (view === "bollywood") return "Bollywood";
+  if (view === "hollywood") return "Hollywood";
+  return "";
+}
+
+function categoryTitle(view = state.view) {
+  const region = categoryRegionForView(view);
+  return region ? `${region} Movies` : "";
+}
+
+function categoryBaseItems(region = categoryRegionForView()) {
+  if (!region) return [];
+  return state.items.filter((item) => item.type === "movie" && item.region === region);
+}
+
+function displayItems(items = getVisibleItems()) {
+  if (!isCategoryView()) return items;
+  return sortCategoryItems(items);
+}
+
+function sortCategoryItems(items) {
+  const mode = state.categorySort;
+  const tab = state.categoryTab;
+  return [...items].sort((a, b) => {
+    if (mode === "title") return a.title.localeCompare(b.title);
+    if (mode === "newest" || (mode === "featured" && tab === "recent")) {
+      return Number(b.year || 0) - Number(a.year || 0) || scoreValue(b) - scoreValue(a);
+    }
+    if (mode === "rating" || (mode === "featured" && tab === "top-rated")) {
+      return scoreValue(b) - scoreValue(a) || Number(b.year || 0) - Number(a.year || 0);
+    }
+    return scoreValue(b) * 12 + Number(b.year || 0) / 8 - (scoreValue(a) * 12 + Number(a.year || 0) / 8);
+  });
 }
 
 function applyTheme() {
@@ -623,7 +857,11 @@ function render() {
   setActiveFilter();
   els.clearSearch.classList.toggle("is-visible", Boolean(state.query));
 
-  const visible = getVisibleItems();
+  const rawVisible = getVisibleItems();
+  const visible = displayItems(rawVisible);
+  const showBrowse = Boolean(state.query) || state.view !== "home";
+  const categoryMode = isCategoryView();
+  const gridItems = categoryMode ? visible.slice(0, state.categoryLimit) : visible;
 
   if (state.page === "detail" && state.selected) {
     els.homeScreen.hidden = true;
@@ -634,19 +872,20 @@ function render() {
   }
 
   els.homeScreen.hidden = false;
-  els.quickHelp.hidden = false;
+  els.quickHelp.hidden = true;
   els.detailPanel.hidden = true;
   if (!state.selected || !visible.some((item) => item.id === state.selected.id)) {
     state.selected = featuredItem(visible) || state.items[0] || null;
   }
 
-  const showBrowse = Boolean(state.query) || state.view !== "home";
   const heroItem = featuredItem(visible) || state.selected;
   if (!showBrowse && heroItem) state.selected = heroItem;
   renderHero(heroItem);
   renderContinue();
   renderRails(showBrowse ? [] : visible);
-  renderGrid(showBrowse ? visible : []);
+  renderCategoryTools(categoryMode ? visible : []);
+  renderGrid(showBrowse ? gridItems : []);
+  renderCategoryMore(categoryMode ? visible.length : 0);
   renderHeadings(visible.length);
 
   els.railArea.hidden = showBrowse;
@@ -665,9 +904,17 @@ function renderHeadings(count) {
     movie: state.query ? "Movie results" : "Movies",
     tv: state.query ? "TV results" : "TV Shows",
     watchlist: "Your watchlist",
+    bollywood: "Bollywood Movies",
+    hollywood: "Hollywood Movies",
   };
   els.sectionTitle.textContent = titleMap[state.view] || `Featured on ${APP_NAME}`;
-  els.eyebrow.textContent = state.isSearching ? "Searching" : state.query ? "Search results" : "Ready to watch";
+  els.eyebrow.textContent = state.isSearching
+    ? "Searching"
+    : state.query
+      ? "Search results"
+      : isCategoryView()
+        ? "Curated library"
+        : "Ready to watch";
   els.resultCount.textContent = `${count} ${count === 1 ? "title" : "titles"}`;
 }
 
@@ -694,11 +941,14 @@ function sortedByYear(items) {
 function renderHero(item) {
   if (!item) {
     els.hero.innerHTML = "";
+    state.heroItemId = "";
     return;
   }
 
+  state.heroItemId = item.id;
   const heroImage = usesPosterArtwork(item) ? item.posterUrl : item.backdropUrl || item.posterUrl;
   els.hero.style.setProperty("--hero-image", `url("${heroImage}")`);
+  els.hero.classList.toggle("is-poster-art", usesPosterArtwork(item));
   const genres = (item.genres || []).slice(0, 3);
   const canPlay = Boolean(item.tmdbId);
   els.hero.innerHTML = `
@@ -730,6 +980,24 @@ function renderHero(item) {
   `;
 }
 
+function transitionHeroTo(item) {
+  if (!item || state.heroTransitioning || state.heroItemId === item.id) return;
+  state.heroTransitioning = true;
+  state.selected = item;
+  els.hero.classList.add("is-transitioning");
+
+  window.setTimeout(() => {
+    renderHero(item);
+    els.hero.classList.remove("is-transitioning");
+    els.hero.classList.add("is-entering");
+
+    window.setTimeout(() => {
+      els.hero.classList.remove("is-entering");
+      state.heroTransitioning = false;
+    }, 460);
+  }, 220);
+}
+
 function renderRails(items) {
   if (!items.length) {
     els.railArea.innerHTML = "";
@@ -744,6 +1012,7 @@ function renderRails(items) {
   const watchlistItems = state.items.filter((item) => isWatchlisted(item));
   const sections = [
     {
+      key: "top-10",
       title: "Top 10 Today",
       subtitle: "Highest rated picks across movies and shows",
       items: allItems.slice(0, 10),
@@ -751,37 +1020,45 @@ function renderRails(items) {
       ranked: true,
     },
     {
+      key: "bollywood",
       title: "Bollywood Movies",
       subtitle: "High-energy Indian cinema ready to open",
-      items: bollywoodItems.slice(0, 12),
+      items: bollywoodItems.slice(0, 16),
       card: "poster",
+      category: "bollywood",
     },
     {
+      key: "hollywood",
       title: "Hollywood Movies",
       subtitle: "Big-screen favorites and modern blockbusters",
-      items: hollywoodItems.slice(0, 12),
+      items: hollywoodItems.slice(0, 16),
       card: "wide",
+      category: "hollywood",
     },
     {
+      key: "trending",
       title: "Trending Movies",
       subtitle: "Recent films ready to open",
       items: sortedByYear(state.items.filter((item) => item.type === "movie")).slice(0, 12),
       card: "wide",
     },
     {
+      key: "binge-tv",
       title: "Binge-Worthy TV",
       subtitle: "Shows with seasons and episode selection",
       items: sortedByScore(state.items.filter((item) => item.type === "tv")).slice(0, 12),
       card: "wide",
     },
     {
+      key: "mind-bending",
       title: "Mind-Bending Picks",
       subtitle: "Sci-fi, mystery, and late-night rabbit holes",
       items: sciFiItems.slice(0, 12),
       card: "poster",
     },
     {
-      title: "Top Rated Library",
+      key: "top-rated",
+      title: "Top Rated",
       subtitle: "The strongest picks across the whole catalog",
       items: allItems.slice(0, 12),
       card: "compact",
@@ -790,6 +1067,7 @@ function renderRails(items) {
 
   if (watchlistItems.length) {
     sections.splice(1, 0, {
+      key: "saved",
       title: "Saved for Later",
       subtitle: `${watchlistItems.length} ${watchlistItems.length === 1 ? "title" : "titles"} in your watchlist`,
       items: watchlistItems.slice(0, 12),
@@ -804,6 +1082,8 @@ function renderRails(items) {
 }
 
 function renderRail(section) {
+  const railId = `rail-${normalizeCompact(section.key || section.title)}`;
+  const cardClass = `${section.card === "wide" ? "is-wide" : ""} ${section.card === "compact" ? "is-compact-row" : ""}`;
   return `
     <section class="media-rail">
       <div class="rail-head">
@@ -811,8 +1091,21 @@ function renderRail(section) {
           <h2>${safeText(section.title)}</h2>
           <p>${safeText(section.subtitle)}</p>
         </div>
+        <div class="rail-actions">
+          ${
+            section.category
+              ? `<button class="text-button see-more-button" type="button" data-action="category-page" data-category="${safeText(section.category)}">See More</button>`
+              : ""
+          }
+          <button class="rail-arrow" type="button" data-action="rail-scroll" data-target="${safeText(railId)}" data-direction="-1" aria-label="Scroll ${safeText(section.title)} left">
+            <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <button class="rail-arrow" type="button" data-action="rail-scroll" data-target="${safeText(railId)}" data-direction="1" aria-label="Scroll ${safeText(section.title)} right">
+            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="rail-track ${section.card === "wide" ? "is-wide" : ""} ${section.card === "compact" ? "is-compact-row" : ""}">
+      <div class="rail-track ${cardClass}" id="${safeText(railId)}" data-drag-scroll>
         ${section.items
           .map((item, index) =>
             renderMediaCard(item, {
@@ -832,8 +1125,9 @@ function renderMediaCard(item, opts = {}) {
   const progress = playbackProgress(item);
   const meta = [item.runtime, itemYear(item), mediaLabel(item.type)].filter(Boolean).join(" / ");
   const subline = (item.genres || []).slice(0, 2).join(" / ") || meta;
+  const posterSourceClass = opts.wide && usesPosterArtwork(item) ? "is-poster-source" : "";
   return `
-    <button class="media-card ${opts.wide ? "is-wide" : ""} ${opts.compact ? "is-compact" : ""}" type="button" data-action="open-title" data-id="${safeText(item.id)}">
+    <button class="media-card ${opts.wide ? "is-wide" : ""} ${opts.compact ? "is-compact" : ""} ${posterSourceClass}" type="button" data-action="open-title" data-id="${safeText(item.id)}">
       <span class="media-art">
         ${artwork ? `<img src="${safeText(artwork)}" alt="${safeText(item.title)} artwork" loading="lazy" />` : ""}
         ${opts.rank ? `<span class="rank-badge">#${String(opts.rank).padStart(2, "0")}</span>` : ""}
@@ -897,6 +1191,81 @@ function renderGrid(items) {
       },
     )
     .join("");
+}
+
+function renderCategoryTools(items) {
+  if (!isCategoryView()) {
+    els.categoryTools.hidden = true;
+    els.categoryTools.innerHTML = "";
+    return;
+  }
+
+  const genreMap = new Map();
+  categoryBaseItems()
+    .flatMap((item) => item.genres || [])
+    .filter(Boolean)
+    .forEach((genre) => genreMap.set(normalizeSearch(genre), genre));
+  const genres = Array.from(genreMap, ([value, label]) => ({ value, label }));
+  const genreOptions = genres
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map((genre) => `<option value="${safeText(genre.value)}" ${state.categoryGenre === genre.value ? "selected" : ""}>${safeText(genre.label)}</option>`)
+    .join("");
+  const tabs = [
+    ["trending", "Trending"],
+    ["recent", "Recent"],
+    ["top-rated", "Top Rated"],
+  ];
+
+  els.categoryTools.hidden = false;
+  els.categoryTools.innerHTML = `
+    <div class="category-tabs" role="tablist" aria-label="${safeText(categoryTitle())} tabs">
+      ${tabs
+        .map(
+          ([tab, label]) =>
+            `<button class="${state.categoryTab === tab ? "is-active" : ""}" type="button" role="tab" aria-selected="${state.categoryTab === tab}" data-action="category-tab" data-tab="${tab}">${label}</button>`,
+        )
+        .join("")}
+    </div>
+    <div class="category-fields">
+      <label>
+        <span>Search this page</span>
+        <input id="categorySearch" value="${safeText(state.categoryQuery)}" placeholder="Search ${safeText(categoryRegionForView())} movies" />
+      </label>
+      <label>
+        <span>Genre</span>
+        <select id="categoryGenreSelect">
+          <option value="all">All genres</option>
+          ${genreOptions}
+        </select>
+      </label>
+      <label>
+        <span>Sort</span>
+        <select id="categorySortSelect">
+          <option value="featured" ${state.categorySort === "featured" ? "selected" : ""}>Featured</option>
+          <option value="rating" ${state.categorySort === "rating" ? "selected" : ""}>Highest rated</option>
+          <option value="newest" ${state.categorySort === "newest" ? "selected" : ""}>Newest first</option>
+          <option value="title" ${state.categorySort === "title" ? "selected" : ""}>A to Z</option>
+        </select>
+      </label>
+    </div>
+    <p class="category-note">${items.length} ${items.length === 1 ? "title" : "titles"} matched your filters.</p>
+  `;
+}
+
+function renderCategoryMore(total) {
+  if (!isCategoryView() || total <= state.categoryLimit) {
+    els.categoryMore.hidden = true;
+    els.categoryMore.innerHTML = "";
+    return;
+  }
+
+  const remaining = total - state.categoryLimit;
+  els.categoryMore.hidden = false;
+  els.categoryMore.innerHTML = `
+    <button class="secondary-button" type="button" data-action="category-more">
+      Show ${Math.min(CATEGORY_PAGE_SIZE, remaining)} more
+    </button>
+  `;
 }
 
 function renderSkeletonCards(count = 8) {
@@ -1717,11 +2086,11 @@ async function searchRemote(query) {
 
   state.items = sortSearchResults(mergeItems(SEED_TITLES.map(normalizeSeed), ...results, localMatches), query);
   state.isSearching = false;
-  state.selected = getVisibleItems()[0] || state.items[0] || null;
+  state.selected = displayItems()[0] || state.items[0] || null;
   scrollToTop();
   render();
   enrichSelected(state.selected);
-  enrichRatings(getVisibleItems());
+  enrichRatings(displayItems());
 }
 
 async function enrichSelected(item) {
@@ -1862,8 +2231,9 @@ async function enrichRatings(items) {
 }
 
 function setActiveNav() {
+  const activeView = isCategoryView() ? "movie" : state.view;
   document.querySelectorAll(".nav-item").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.view === state.view);
+    button.classList.toggle("is-active", button.dataset.view === activeView);
   });
 }
 
@@ -1879,6 +2249,7 @@ function scrollToTop(behavior = "smooth") {
 
 function openTitle(item, push = true) {
   if (!item) return;
+  const returnHash = location.hash.startsWith("#/category/") ? location.hash : "";
   state.page = "detail";
   state.selected = item;
   state.currentSeason = 1;
@@ -1886,17 +2257,31 @@ function openTitle(item, push = true) {
   scrollToTop("auto");
   render();
   enrichSelected(item);
-  if (push) history.pushState({ page: "detail", id: item.id }, "", `#/title/${encodeURIComponent(item.id)}`);
+  if (push) history.pushState({ page: "detail", id: item.id, returnHash }, "", `#/title/${encodeURIComponent(item.id)}`);
 }
 
 function closeTitle(push = true) {
   state.page = "home";
   scrollToTop("auto");
   render();
-  if (push && location.hash.startsWith("#/title/")) history.pushState({ page: "home" }, "", location.pathname);
+  if (push && location.hash.startsWith("#/title/")) {
+    const returnHash = history.state?.returnHash;
+    if (returnHash) {
+      history.pushState({ page: "category" }, "", returnHash);
+      restoreRouteFromHash();
+    } else {
+      history.pushState({ page: "home" }, "", location.pathname);
+    }
+  }
 }
 
 function restoreRouteFromHash() {
+  const categoryMatch = location.hash.match(/^#\/category\/(bollywood|hollywood)$/);
+  if (categoryMatch) {
+    openCategoryPage(categoryMatch[1], false);
+    return true;
+  }
+
   const match = location.hash.match(/^#\/title\/(.+)$/);
   if (!match) return false;
   const item = findItem(decodeURIComponent(match[1]));
@@ -1909,13 +2294,39 @@ function applySection(view, filter = view === "home" ? "all" : view) {
   state.page = "home";
   state.view = view;
   state.filter = filter;
+  if (!isCategoryView(view)) resetCategoryState();
   setActiveNav();
   setActiveFilter();
-  state.selected = getVisibleItems()[0] || state.items[0] || null;
+  state.selected = displayItems()[0] || state.items[0] || null;
   scrollToTop();
   render();
   enrichSelected(state.selected);
-  if (location.hash.startsWith("#/title/")) history.pushState({ page: "home" }, "", location.pathname);
+  if (location.hash) history.pushState({ page: "home" }, "", location.pathname);
+}
+
+function openCategoryPage(category, push = true) {
+  if (!CATEGORY_VIEWS.has(category)) return;
+  state.page = "home";
+  state.view = category;
+  state.filter = "movie";
+  state.query = "";
+  els.searchInput.value = "";
+  resetCategoryState();
+  state.selected = displayItems()[0] || state.items[0] || null;
+  setActiveNav();
+  setActiveFilter();
+  scrollToTop();
+  render();
+  enrichSelected(state.selected);
+  if (push) history.pushState({ page: "category", category }, "", `#/category/${category}`);
+}
+
+function resetCategoryState() {
+  state.categoryQuery = "";
+  state.categoryGenre = "all";
+  state.categorySort = "featured";
+  state.categoryTab = "trending";
+  state.categoryLimit = CATEGORY_PAGE_SIZE;
 }
 
 function clearSearchState() {
@@ -1927,11 +2338,11 @@ function clearSearchState() {
 }
 
 function selectedIndex() {
-  return getVisibleItems().findIndex((item) => item.id === state.selected?.id);
+  return displayItems().findIndex((item) => item.id === state.selected?.id);
 }
 
 function selectRelativeItem(direction) {
-  const visible = getVisibleItems();
+  const visible = displayItems();
   if (!visible.length) return;
   const current = selectedIndex();
   const nextIndex = current < 0 ? 0 : (current + direction + visible.length) % visible.length;
@@ -1945,6 +2356,10 @@ function selectRelativeItem(direction) {
 function goBackOneStep() {
   if (!els.playerOverlay.hidden) {
     closePlayer();
+    return;
+  }
+  if (els.shortcutsModal.open) {
+    els.shortcutsModal.close();
     return;
   }
   if (els.settingsModal.open) {
@@ -1966,6 +2381,22 @@ function goBackOneStep() {
   if (document.activeElement === els.searchInput) {
     els.searchInput.blur();
   }
+}
+
+function openShortcuts() {
+  if (!els.shortcutsModal.open) els.shortcutsModal.showModal();
+}
+
+function closeShortcuts() {
+  if (els.shortcutsModal.open) els.shortcutsModal.close();
+}
+
+function scrollRail(button) {
+  const track = document.getElementById(button.dataset.target || "");
+  if (!track) return;
+  const direction = Number(button.dataset.direction || 1);
+  const distance = Math.max(260, Math.floor(track.clientWidth * 0.82));
+  track.scrollBy({ left: direction * distance, behavior: "smooth" });
 }
 
 function isTypingTarget(target) {
@@ -2038,6 +2469,27 @@ document.addEventListener("click", (event) => {
     case "toggle-watchlist":
       toggleWatchlist(item);
       break;
+    case "category-page":
+      openCategoryPage(button.dataset.category);
+      break;
+    case "category-tab":
+      state.categoryTab = button.dataset.tab || "trending";
+      state.categoryLimit = CATEGORY_PAGE_SIZE;
+      render();
+      break;
+    case "category-more":
+      state.categoryLimit += CATEGORY_PAGE_SIZE;
+      render();
+      break;
+    case "rail-scroll":
+      scrollRail(button);
+      break;
+    case "open-shortcuts":
+      openShortcuts();
+      break;
+    case "close-shortcuts":
+      closeShortcuts();
+      break;
     case "choose-episode":
       if (item) {
         state.currentSeason = Number(button.dataset.season || 1);
@@ -2073,9 +2525,13 @@ document.querySelectorAll(".segmented button").forEach((button) => {
     state.filter = button.dataset.filter;
     if (state.view === "movie" && state.filter !== "movie") state.view = "home";
     if (state.view === "tv" && state.filter !== "tv") state.view = "home";
+    if (isCategoryView() && state.filter !== "movie") {
+      state.view = "home";
+      resetCategoryState();
+    }
     setActiveNav();
     setActiveFilter();
-    state.selected = getVisibleItems()[0] || state.items[0] || null;
+    state.selected = displayItems()[0] || state.items[0] || null;
     scrollToTop();
     render();
     enrichSelected(state.selected);
@@ -2090,7 +2546,7 @@ els.searchInput.addEventListener(
     if (state.query.length >= 2) searchRemote(state.query);
     else {
       state.items = SEED_TITLES.map(normalizeSeed);
-      state.selected = getVisibleItems()[0] || state.items[0] || null;
+      state.selected = displayItems()[0] || state.items[0] || null;
       scrollToTop();
       render();
       if (!state.query) hydrateHome();
@@ -2102,8 +2558,39 @@ els.clearSearch.addEventListener("click", () => {
   clearSearchState();
 });
 
+const updateCategorySearch = debounce((value) => {
+  state.categoryQuery = value.trim();
+  state.categoryLimit = CATEGORY_PAGE_SIZE;
+  render();
+  window.requestAnimationFrame(() => {
+    const input = document.getElementById("categorySearch");
+    input?.focus();
+    input?.setSelectionRange(input.value.length, input.value.length);
+  });
+}, 220);
+
+els.categoryTools.addEventListener("input", (event) => {
+  if (event.target?.id !== "categorySearch") return;
+  updateCategorySearch(event.target.value);
+});
+
+els.categoryTools.addEventListener("change", (event) => {
+  if (event.target?.id === "categoryGenreSelect") {
+    state.categoryGenre = event.target.value;
+    state.categoryLimit = CATEGORY_PAGE_SIZE;
+    render();
+  }
+  if (event.target?.id === "categorySortSelect") {
+    state.categorySort = event.target.value;
+    state.categoryLimit = CATEGORY_PAGE_SIZE;
+    render();
+  }
+});
+
 els.settingsButton.addEventListener("click", openSettings);
 els.profileButton.addEventListener("click", openSettings);
+els.shortcutsButton.addEventListener("click", openShortcuts);
+els.closeShortcuts.addEventListener("click", closeShortcuts);
 
 els.settingsForm.addEventListener("submit", (event) => {
   if (event.submitter?.value === "cancel") return;
@@ -2128,22 +2615,88 @@ els.clearContinue.addEventListener("click", () => {
   renderContinue();
 });
 
+let dragScroll = null;
+
+document.addEventListener("pointerdown", (event) => {
+  const track = event.target.closest("[data-drag-scroll]");
+  if (!track || event.button > 0) return;
+  dragScroll = {
+    track,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    scrollLeft: track.scrollLeft,
+    moved: false,
+  };
+  track.classList.add("is-pressed");
+  track.setPointerCapture?.(event.pointerId);
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (!dragScroll) return;
+  const delta = event.clientX - dragScroll.startX;
+  if (Math.abs(delta) > 5) {
+    dragScroll.moved = true;
+    dragScroll.track.classList.add("is-dragging");
+    event.preventDefault();
+  }
+  if (dragScroll.moved) dragScroll.track.scrollLeft = dragScroll.scrollLeft - delta;
+});
+
+function finishDragScroll(event) {
+  if (!dragScroll) return;
+  const { track, pointerId, moved } = dragScroll;
+  if (!event || event.pointerId === pointerId) {
+    try {
+      track.releasePointerCapture?.(pointerId);
+    } catch {
+      // Pointer capture can already be released if the browser scrolls natively.
+    }
+    track.classList.remove("is-pressed");
+    track.classList.remove("is-dragging");
+    if (moved) {
+      track.dataset.dragged = "true";
+      window.setTimeout(() => {
+        delete track.dataset.dragged;
+      }, 80);
+    }
+    dragScroll = null;
+  }
+}
+
+document.addEventListener("pointerup", finishDragScroll);
+document.addEventListener("pointercancel", finishDragScroll);
+document.addEventListener(
+  "click",
+  (event) => {
+    const track = event.target.closest("[data-drag-scroll]");
+    if (!track?.dataset.dragged) return;
+    event.preventDefault();
+    event.stopPropagation();
+  },
+  true,
+);
+
 els.closePlayer.addEventListener("click", closePlayer);
 window.addEventListener("message", handlePlayerMessage);
 window.addEventListener("popstate", () => {
   if (!restoreRouteFromHash()) {
     state.page = "home";
+    if (!location.hash) {
+      state.view = "home";
+      state.filter = "all";
+      resetCategoryState();
+    }
     render();
   }
 });
 
 function startHeroRotation() {
   window.setInterval(() => {
-    if (state.page !== "home" || state.view !== "home" || state.query || !els.playerOverlay.hidden || els.settingsModal.open) return;
+    if (state.page !== "home" || state.view !== "home" || state.query || !els.playerOverlay.hidden || els.settingsModal.open || els.shortcutsModal.open) return;
     const candidates = sortedByScore(getVisibleItems()).filter((item) => item.backdropUrl && !usesPosterArtwork(item));
     if (candidates.length < 2) return;
     state.heroIndex = (state.heroIndex + 1) % candidates.length;
-    render();
+    transitionHeroTo(candidates[state.heroIndex % candidates.length]);
   }, 9000);
 }
 document.addEventListener("keydown", (event) => {
@@ -2156,7 +2709,13 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (typing || els.settingsModal.open || !els.playerOverlay.hidden) return;
+  if (event.key === "?" && !typing && els.playerOverlay.hidden && !els.settingsModal.open) {
+    event.preventDefault();
+    openShortcuts();
+    return;
+  }
+
+  if (typing || els.settingsModal.open || els.shortcutsModal.open || !els.playerOverlay.hidden) return;
 
   if (event.key === "/") {
     event.preventDefault();
