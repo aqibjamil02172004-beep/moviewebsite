@@ -285,6 +285,10 @@ const SEED_TITLES = [
 
 const els = {
   hero: document.getElementById("hero"),
+  homeScreen: document.getElementById("homeScreen"),
+  railArea: document.getElementById("railArea"),
+  browseBlock: document.getElementById("browseBlock"),
+  quickHelp: document.getElementById("quickHelp"),
   posterGrid: document.getElementById("posterGrid"),
   detailPanel: document.getElementById("detailPanel"),
   searchInput: document.getElementById("searchInput"),
@@ -323,6 +327,7 @@ const state = {
   profile: loadProfile(),
   items: SEED_TITLES.map(normalizeSeed),
   selected: null,
+  page: "home",
   filter: "all",
   view: "home",
   query: "",
@@ -526,22 +531,43 @@ function applyTheme() {
 
 function render() {
   applyTheme();
+  setActiveNav();
+  setActiveFilter();
+  els.clearSearch.classList.toggle("is-visible", Boolean(state.query));
 
   const visible = getVisibleItems();
-  if (!state.selected || !visible.some((item) => item.id === state.selected.id)) {
-    state.selected = visible[0] || state.items[0] || null;
+
+  if (state.page === "detail" && state.selected) {
+    els.homeScreen.hidden = true;
+    els.quickHelp.hidden = true;
+    els.detailPanel.hidden = false;
+    renderDetail(state.selected);
+    return;
   }
 
-  renderHero(state.selected);
-  renderGrid(visible);
-  renderDetail(state.selected);
+  els.homeScreen.hidden = false;
+  els.quickHelp.hidden = false;
+  els.detailPanel.hidden = true;
+  if (!state.selected || !visible.some((item) => item.id === state.selected.id)) {
+    state.selected = featuredItem(visible) || state.items[0] || null;
+  }
+
+  const showBrowse = Boolean(state.query) || state.view !== "home";
+  const heroItem = featuredItem(visible) || state.selected;
+  renderHero(heroItem);
   renderContinue();
+  renderRails(showBrowse ? [] : visible);
+  renderGrid(showBrowse ? visible : []);
   renderHeadings(visible.length);
 
+  els.railArea.hidden = showBrowse;
+  els.browseBlock.hidden = !showBrowse;
   els.hero.classList.toggle("is-search-mode", Boolean(state.query));
-  els.hero.classList.toggle("is-poster-art", usesPosterArtwork(state.selected));
-  els.clearSearch.classList.toggle("is-visible", Boolean(state.query));
-  els.emptyState.hidden = true;
+  els.hero.classList.toggle("is-poster-art", usesPosterArtwork(heroItem));
+  els.emptyState.hidden = visible.length > 0;
+  if (!visible.length) {
+    els.emptyState.innerHTML = `<strong>No titles found</strong><span>Try another search or clear the current filter.</span>`;
+  }
 }
 
 function renderHeadings(count) {
@@ -554,6 +580,22 @@ function renderHeadings(count) {
   els.sectionTitle.textContent = titleMap[state.view] || `Featured on ${APP_NAME}`;
   els.eyebrow.textContent = state.isSearching ? "Searching" : state.query ? "Search results" : "Ready to watch";
   els.resultCount.textContent = `${count} ${count === 1 ? "title" : "titles"}`;
+}
+
+function featuredItem(items) {
+  return items.find((item) => item.backdropUrl && !usesPosterArtwork(item)) || items[0] || null;
+}
+
+function scoreValue(item) {
+  return Number(item.imdbRating || item.omdbRating || item.rating || 0);
+}
+
+function sortedByScore(items) {
+  return [...items].sort((a, b) => scoreValue(b) - scoreValue(a) || Number(b.year || 0) - Number(a.year || 0));
+}
+
+function sortedByYear(items) {
+  return [...items].sort((a, b) => Number(b.year || 0) - Number(a.year || 0) || scoreValue(b) - scoreValue(a));
 }
 
 function renderHero(item) {
@@ -572,14 +614,19 @@ function renderHero(item) {
       <h2>${safeText(item.title)}</h2>
       <p class="hero-overview">${safeText(item.overview || "No overview is available yet.")}</p>
       <div class="meta-row">
-        <span class="rating-pill">Rating ${safeText(scoreLabel(item))}</span>
+        <span class="rating-pill">${safeText(scoreLabel(item))}</span>
         <span class="pill">${safeText(itemYear(item))}</span>
+        ${item.runtime ? `<span class="pill">${safeText(item.runtime)}</span>` : ""}
         ${genres.map((genre) => `<span class="pill">${safeText(genre)}</span>`).join("")}
       </div>
       <div class="hero-actions">
         <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canPlay ? "" : "disabled"}>
           <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          ${canPlay ? "Play" : "Needs ID"}
+          ${canPlay ? "Play" : "Not Available"}
+        </button>
+        <button class="secondary-button" type="button" data-action="open-title" data-id="${safeText(item.id)}">
+          <svg viewBox="0 0 24 24"><path d="M12 5h.01M12 9v10"/></svg>
+          Details
         </button>
         <button class="secondary-button" type="button" data-action="toggle-watchlist" data-id="${safeText(item.id)}">
           <svg viewBox="0 0 24 24"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-3.5L6 21z"/></svg>
@@ -587,6 +634,95 @@ function renderHero(item) {
         </button>
       </div>
     </div>
+  `;
+}
+
+function renderRails(items) {
+  if (!items.length) {
+    els.railArea.innerHTML = "";
+    return;
+  }
+
+  const allItems = sortedByScore(state.items);
+  const watchlistItems = state.items.filter((item) => isWatchlisted(item));
+  const sections = [
+    {
+      title: "Top 10 Today",
+      subtitle: "Highest rated picks across movies and shows",
+      items: allItems.slice(0, 10),
+      card: "poster",
+      ranked: true,
+    },
+    {
+      title: "Trending Movies",
+      subtitle: "Recent films ready to open",
+      items: sortedByYear(state.items.filter((item) => item.type === "movie")).slice(0, 12),
+      card: "wide",
+    },
+    {
+      title: "Binge-Worthy TV",
+      subtitle: "Shows with seasons and episode selection",
+      items: sortedByScore(state.items.filter((item) => item.type === "tv")).slice(0, 12),
+      card: "wide",
+    },
+    {
+      title: "Top Rated",
+      subtitle: "The strongest library picks",
+      items: allItems.slice(0, 12),
+      card: "wide",
+    },
+  ];
+
+  if (watchlistItems.length) {
+    sections.splice(1, 0, {
+      title: "Saved for Later",
+      subtitle: `${watchlistItems.length} ${watchlistItems.length === 1 ? "title" : "titles"} in your watchlist`,
+      items: watchlistItems.slice(0, 12),
+      card: "poster",
+    });
+  }
+
+  els.railArea.innerHTML = sections
+    .filter((section) => section.items.length)
+    .map(renderRail)
+    .join("");
+}
+
+function renderRail(section) {
+  return `
+    <section class="media-rail">
+      <div class="rail-head">
+        <div>
+          <h2>${safeText(section.title)}</h2>
+          <p>${safeText(section.subtitle)}</p>
+        </div>
+      </div>
+      <div class="rail-track ${section.card === "wide" ? "is-wide" : ""}">
+        ${section.items.map((item, index) => renderMediaCard(item, { rank: section.ranked ? index + 1 : 0, wide: section.card === "wide" })).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderMediaCard(item, opts = {}) {
+  const artwork = opts.wide ? item.backdropUrl || item.posterUrl : item.posterUrl || item.backdropUrl;
+  const progress = playbackProgress(item);
+  return `
+    <button class="media-card ${opts.wide ? "is-wide" : ""}" type="button" data-action="open-title" data-id="${safeText(item.id)}">
+      <span class="media-art">
+        ${artwork ? `<img src="${safeText(artwork)}" alt="${safeText(item.title)} artwork" loading="lazy" />` : ""}
+        ${opts.rank ? `<span class="rank-badge">#${String(opts.rank).padStart(2, "0")}</span>` : ""}
+      </span>
+      <span class="media-card-copy">
+        <strong>${safeText(item.title)}</strong>
+        <span>
+          <b>${safeText(scoreLabel(item))}</b>
+          <span>${safeText(itemYear(item))}</span>
+          <span>${safeText(mediaLabel(item.type))}</span>
+        </span>
+        ${progress ? progressMarkup(progress, "card-progress") : ""}
+      </span>
+    </button>
   `;
 }
 
@@ -600,7 +736,7 @@ function renderGrid(items) {
         const source = item.source || APP_NAME;
         const progress = playbackProgress(item);
         return `
-      <button class="poster-card ${isSearch ? "search-card" : ""} ${state.selected?.id === item.id ? "is-selected" : ""}" type="button" data-action="select" data-id="${safeText(item.id)}">
+      <button class="poster-card ${isSearch ? "search-card" : ""} ${state.selected?.id === item.id ? "is-selected" : ""}" type="button" data-action="open-title" data-id="${safeText(item.id)}">
         <span class="poster-art">
           ${item.posterUrl ? `<img src="${safeText(item.posterUrl)}" alt="${safeText(item.title)} poster" loading="lazy" />` : ""}
           <span class="poster-badge">${safeText(scoreLabel(item))}</span>
@@ -647,43 +783,56 @@ function renderDetail(item) {
     item.imdbRating ? `IMDb ${Number(item.imdbRating).toFixed(1)}` : "",
     item.omdbRating ? `OMDb ${item.omdbRating}` : "",
   ].filter(Boolean);
+  const heroImage = usesPosterArtwork(item) ? item.posterUrl : item.backdropUrl || item.posterUrl;
+  const similar = sortedByScore(state.items)
+    .filter((candidate) => candidate.id !== item.id && (candidate.type === item.type || (candidate.genres || []).some((genre) => (item.genres || []).includes(genre))))
+    .slice(0, 10);
 
+  els.detailPanel.style.setProperty("--detail-image", `url("${heroImage}")`);
   els.detailPanel.innerHTML = `
-    <div class="panel-poster ${usesPosterArtwork(item) ? "is-poster" : ""}">
-      ${item.backdropUrl || item.posterUrl ? `<img src="${safeText(usesPosterArtwork(item) ? item.posterUrl : item.backdropUrl || item.posterUrl)}" alt="${safeText(item.title)} artwork" />` : ""}
-    </div>
-    <h2>${safeText(item.title)}</h2>
-    <div class="panel-meta">
-      <span>${safeText(mediaLabel(item.type))}</span>
-      <span>${safeText(itemYear(item))}</span>
-      ${item.runtime ? `<span>${safeText(item.runtime)}</span>` : ""}
-    </div>
-    <div class="rating-row">
-      ${ratings.length ? ratings.map((rating) => `<span class="rating-pill">${safeText(rating)}</span>`).join("") : `<span class="rating-pill">Rating ${safeText(scoreLabel(item))}</span>`}
-    </div>
-    <p class="overview">${safeText(item.overview || "No overview is available yet.")}</p>
-    <div class="hero-actions">
-      <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canPlay ? "" : "disabled"}>
-        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-        Play
-      </button>
-      <button class="secondary-button" type="button" data-action="toggle-watchlist" data-id="${safeText(item.id)}">
-        ${safeText(watchText)}
-      </button>
-    </div>
+    <button class="floating-back" type="button" data-action="back">
+      <svg viewBox="0 0 24 24"><path d="M15 18 9 12l6-6"/></svg>
+      Back
+    </button>
+    <section class="title-hero">
+      <div class="title-copy">
+        <p class="kicker">${safeText(mediaLabel(item.type))}</p>
+        <h1>${safeText(item.title)}</h1>
+        <div class="title-meta">
+          ${ratings.length ? ratings.map((rating) => `<span><b>${safeText(rating)}</b></span>`).join("") : `<span><b>${safeText(scoreLabel(item))}</b></span>`}
+          <span>${safeText(itemYear(item))}</span>
+          ${item.runtime ? `<span>${safeText(item.runtime)}</span>` : ""}
+          ${(item.genres || []).slice(0, 3).map((genre) => `<span>${safeText(genre)}</span>`).join("")}
+        </div>
+        <p class="overview">${safeText(item.overview || "No overview is available yet.")}</p>
+        <div class="hero-actions">
+          <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canPlay ? "" : "disabled"}>
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            ${canPlay ? "Play" : "Not Available"}
+          </button>
+          <button class="secondary-button" type="button" data-action="toggle-watchlist" data-id="${safeText(item.id)}">
+            <svg viewBox="0 0 24 24"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-3.5L6 21z"/></svg>
+            ${safeText(watchText)}
+          </button>
+        </div>
+      </div>
+      <aside class="title-poster">
+        ${item.posterUrl ? `<img src="${safeText(item.posterUrl)}" alt="${safeText(item.title)} poster" />` : ""}
+      </aside>
+    </section>
     ${
       item.type === "tv"
         ? `
-      <div class="panel-section">
-        <div class="panel-section-head">
-          <h3>Episodes</h3>
-          <span>${safeText(`${seasonCount} ${seasonCount === 1 ? "season" : "seasons"}`)}</span>
+      <section class="detail-section">
+        <div class="section-heading compact">
+          <h2>Episodes</h2>
+          <span>${safeText(`${seasonCount} ${seasonCount === 1 ? "season" : "seasons"} / ${episodeCount} ${episodeCount === 1 ? "episode" : "episodes"}`)}</span>
         </div>
         ${
           canPlay
             ? `
           <p class="episode-summary ${isLoadingEpisodes ? "is-refreshing" : ""}">
-            ${safeText(isLoadingEpisodes ? "Checking latest season list..." : `${seasonCount} ${seasonCount === 1 ? "season" : "seasons"} / ${episodeCount} ${episodeCount === 1 ? "episode" : "episodes"}`)}
+            ${safeText(isLoadingEpisodes ? "Checking latest season list..." : `Choose a season and episode, then press Play.`)}
           </p>
           <div class="episode-grid">
             <label>
@@ -699,26 +848,46 @@ function renderDetail(item) {
               </select>
             </label>
           </div>
-        `
-            : `
-          <p class="manual-help">This TVmaze result needs a TMDB show ID before Vidking can play it.</p>
-          <div class="manual-id">
-            <input id="manualTmdbInput" inputmode="numeric" placeholder="TMDB show ID" />
-            <button class="chip-button" type="button" data-action="attach-tmdb" data-id="${safeText(item.id)}">Use ID</button>
+          <div class="episode-list">
+            ${episodeOptions
+              .slice(0, 16)
+              .map(
+                (ep) => `
+                <button class="episode-card ${ep.number === selectedEpisode ? "is-active" : ""}" type="button" data-action="choose-episode" data-id="${safeText(item.id)}" data-season="${selectedSeason}" data-episode="${ep.number}">
+                  <span>Episode ${ep.number}</span>
+                  <strong>${safeText(ep.name || `Season ${selectedSeason}, Episode ${ep.number}`)}</strong>
+                  <small>${canPlay ? "Available" : "Not available"}</small>
+                </button>
+              `,
+              )
+              .join("")}
           </div>
         `
+            : `
+          <p class="manual-help">Not available yet. This title needs a TMDB ID before playback can open.</p>
+        `
         }
-      </div>
+      </section>
     `
         : ""
     }
     ${
       people.length
         ? `
-      <div class="panel-section">
-        <h3>Cast</h3>
+      <section class="detail-section">
+        <div class="section-heading compact"><h2>Cast</h2></div>
         <div class="cast-list">${people.map((person) => `<span>${safeText(person)}</span>`).join("")}</div>
-      </div>
+      </section>
+    `
+        : ""
+    }
+    ${
+      similar.length
+        ? `
+      <section class="detail-section">
+        <div class="section-heading compact"><h2>More like this</h2></div>
+        <div class="rail-track is-wide">${similar.map((candidate) => renderMediaCard(candidate, { wide: true })).join("")}</div>
+      </section>
     `
         : ""
     }
@@ -972,7 +1141,7 @@ function syncPlayerLabels(item, season = state.currentSeason, episode = state.cu
 function playItem(item, opts = {}) {
   if (!item) return;
   if (!item.tmdbId) {
-    renderDetail(item);
+    openTitle(item);
     return;
   }
 
@@ -1122,7 +1291,7 @@ async function hydrateHome() {
       ...(trendingTvPage2.results || []).map((item) => normalizeTmdbItem(item, "tv")),
     ];
     state.items = mergeItems(SEED_TITLES.map(normalizeSeed), liveItems);
-    state.selected = state.items[0];
+    state.selected = state.page === "detail" ? findItem(state.selected?.id) || state.selected : state.items[0];
     render();
     enrichRatings(state.items);
   } catch (error) {
@@ -1555,7 +1724,36 @@ function scrollToTop(behavior = "smooth") {
   window.scrollTo({ top: 0, behavior });
 }
 
+function openTitle(item, push = true) {
+  if (!item) return;
+  state.page = "detail";
+  state.selected = item;
+  state.currentSeason = 1;
+  state.currentEpisode = 1;
+  scrollToTop("auto");
+  render();
+  enrichSelected(item);
+  if (push) history.pushState({ page: "detail", id: item.id }, "", `#/title/${encodeURIComponent(item.id)}`);
+}
+
+function closeTitle(push = true) {
+  state.page = "home";
+  scrollToTop("auto");
+  render();
+  if (push && location.hash.startsWith("#/title/")) history.pushState({ page: "home" }, "", location.pathname);
+}
+
+function restoreRouteFromHash() {
+  const match = location.hash.match(/^#\/title\/(.+)$/);
+  if (!match) return false;
+  const item = findItem(decodeURIComponent(match[1]));
+  if (!item) return false;
+  openTitle(item, false);
+  return true;
+}
+
 function applySection(view, filter = view === "home" ? "all" : view) {
+  state.page = "home";
   state.view = view;
   state.filter = filter;
   setActiveNav();
@@ -1564,11 +1762,13 @@ function applySection(view, filter = view === "home" ? "all" : view) {
   scrollToTop();
   render();
   enrichSelected(state.selected);
+  if (location.hash.startsWith("#/title/")) history.pushState({ page: "home" }, "", location.pathname);
 }
 
 function clearSearchState() {
   els.searchInput.value = "";
   state.query = "";
+  state.page = "home";
   scrollToTop();
   hydrateHome();
 }
@@ -1596,6 +1796,10 @@ function goBackOneStep() {
   }
   if (els.settingsModal.open) {
     els.settingsModal.close();
+    return;
+  }
+  if (state.page === "detail") {
+    closeTitle();
     return;
   }
   if (state.query) {
@@ -1649,18 +1853,26 @@ function saveSettings() {
 }
 
 document.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-action]");
+  const button = event.target.closest("[data-action]");
   if (!button) return;
+  if (button instanceof HTMLAnchorElement) event.preventDefault();
 
   const item = findItem(button.dataset.id);
   switch (button.dataset.action) {
+    case "home-link":
+      applySection("home", "all");
+      break;
+    case "back":
+      goBackOneStep();
+      break;
+    case "open-title":
+      openTitle(item);
+      break;
     case "select":
       state.selected = item;
       state.currentSeason = 1;
       state.currentEpisode = 1;
-      render();
-      enrichSelected(item);
-      if (item?.tmdbId) playItem(item);
+      openTitle(item);
       break;
     case "play":
       if (item) playItem(item);
@@ -1672,6 +1884,13 @@ document.addEventListener("click", (event) => {
     }
     case "toggle-watchlist":
       toggleWatchlist(item);
+      break;
+    case "choose-episode":
+      if (item) {
+        state.currentSeason = Number(button.dataset.season || 1);
+        state.currentEpisode = Number(button.dataset.episode || 1);
+        renderDetail(item);
+      }
       break;
     case "attach-tmdb": {
       const input = document.getElementById("manualTmdbInput");
@@ -1714,6 +1933,7 @@ els.searchInput.addEventListener(
   "input",
   debounce(() => {
     state.query = els.searchInput.value.trim();
+    state.page = "home";
     if (state.query.length >= 2) searchRemote(state.query);
     else {
       state.items = SEED_TITLES.map(normalizeSeed);
@@ -1757,6 +1977,12 @@ els.clearContinue.addEventListener("click", () => {
 
 els.closePlayer.addEventListener("click", closePlayer);
 window.addEventListener("message", handlePlayerMessage);
+window.addEventListener("popstate", () => {
+  if (!restoreRouteFromHash()) {
+    state.page = "home";
+    render();
+  }
+});
 document.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   const typing = isTypingTarget(event.target);
@@ -1777,7 +2003,8 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Enter") {
     event.preventDefault();
-    playItem(state.selected);
+    if (state.page === "detail") playItem(state.selected);
+    else openTitle(state.selected);
     return;
   }
 
@@ -1834,5 +2061,5 @@ setActiveNav();
 setActiveFilter();
 state.selected = state.items[0];
 scrollToTop("auto");
-render();
+if (!restoreRouteFromHash()) render();
 hydrateHome();
