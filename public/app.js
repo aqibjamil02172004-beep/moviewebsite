@@ -329,6 +329,7 @@ const state = {
   isSearching: false,
   currentSeason: 1,
   currentEpisode: 1,
+  activePlayerId: "",
   searchToken: 0,
   detailToken: 0,
   detailLoadingId: "",
@@ -597,6 +598,7 @@ function renderGrid(items) {
       (item) => {
         const status = item.tmdbId ? "Vidking ready" : "Needs TMDB ID";
         const source = item.source || APP_NAME;
+        const progress = playbackProgress(item);
         return `
       <button class="poster-card ${isSearch ? "search-card" : ""} ${state.selected?.id === item.id ? "is-selected" : ""}" type="button" data-action="select" data-id="${safeText(item.id)}">
         <span class="poster-art">
@@ -612,6 +614,7 @@ function renderGrid(items) {
           </span>
           ${isSearch ? `<span class="result-status ${item.tmdbId ? "is-ready" : ""}">${safeText(status)}</span>` : ""}
           ${isSearch && item.overview ? `<span class="card-overview">${safeText(item.overview)}</span>` : ""}
+          ${progress ? progressMarkup(progress, "card-progress") : ""}
         </span>
       </button>
     `;
@@ -749,17 +752,98 @@ function renderContinue() {
   els.continueStrip.innerHTML = entries
     .map(({ entry, item }) => {
       const meta = item.type === "tv" ? `S${entry.season || 1} E${entry.episode || 1}` : "Movie";
+      const progress = playbackProgress(item, entry);
       return `
         <button class="mini-card" type="button" data-action="play-continue" data-id="${safeText(item.id)}">
           ${item.posterUrl ? `<img src="${safeText(item.posterUrl)}" alt="${safeText(item.title)} poster" loading="lazy" />` : "<span></span>"}
-          <span>
+          <span class="mini-copy">
             <strong>${safeText(item.title)}</strong>
-            <span>${safeText(meta)} · ${safeText(itemYear(item))}</span>
+            <span class="mini-meta">${safeText(meta)} &middot; ${safeText(itemYear(item))}</span>
+            ${progress ? progressMarkup(progress, "mini-progress") : ""}
           </span>
         </button>
       `;
     })
     .join("");
+}
+
+function continueEntryFor(itemOrId) {
+  const id = typeof itemOrId === "string" ? itemOrId : itemOrId?.id;
+  return state.profile.continueWatching.find((entry) => entry.id === id);
+}
+
+function progressMarkup(progress, className = "") {
+  return `
+    <span class="watch-progress ${className}">
+      <span class="watch-progress-line">
+        <strong>${safeText(progress.label)}</strong>
+        <span>${safeText(progress.detail)}</span>
+      </span>
+      <span class="progress-track" aria-label="${progress.percent}% watched">
+        <span class="progress-fill" style="width: ${progress.percent}%"></span>
+      </span>
+    </span>
+  `;
+}
+
+function playbackProgress(item, entry = continueEntryFor(item)) {
+  if (!item || !entry) return null;
+  const savedPercent = clampPercent(entry.progressPercent);
+
+  if (Number.isFinite(savedPercent) && savedPercent > 0) {
+    const timeDetail =
+      Number.isFinite(entry.currentTime) && Number.isFinite(entry.duration) && entry.duration > 0
+        ? `${formatTime(entry.currentTime)} / ${formatTime(entry.duration)}`
+        : `${savedPercent}% watched`;
+    return {
+      percent: savedPercent,
+      label: item.type === "tv" ? `S${entry.season || 1} E${entry.episode || 1}` : "Movie",
+      detail: timeDetail,
+    };
+  }
+
+  if (item.type !== "tv") {
+    return {
+      percent: 6,
+      label: "Started",
+      detail: "Resume movie",
+    };
+  }
+
+  const model = getEpisodeModel(item);
+  const seasonNumber = Number(entry.season || 1);
+  const episodeNumber = Number(entry.episode || 1);
+  const totalEpisodes = model.reduce((total, season) => total + season.episodes.length, 0);
+  let previousEpisodes = 0;
+  for (const season of model) {
+    if (season.number >= seasonNumber) break;
+    previousEpisodes += season.episodes.length;
+  }
+
+  const currentSeason = model.find((season) => season.number === seasonNumber);
+  const foundIndex = currentSeason?.episodes.findIndex((episode) => episode.number === episodeNumber) ?? -1;
+  const episodeIndex = foundIndex >= 0 ? foundIndex + 1 : Math.max(1, episodeNumber);
+  const currentPosition = totalEpisodes ? Math.min(totalEpisodes, previousEpisodes + episodeIndex) : 1;
+  const percent = totalEpisodes ? clampPercent((currentPosition / totalEpisodes) * 100) : 1;
+
+  return {
+    percent: Math.max(1, percent),
+    label: `S${seasonNumber} E${episodeNumber}`,
+    detail: totalEpisodes ? `${currentPosition}/${totalEpisodes} episodes` : "Resume show",
+  };
+}
+
+function clampPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return NaN;
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function formatTime(seconds) {
+  const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remaining = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${remaining}`;
 }
 
 function getEpisodeModel(item) {
@@ -814,11 +898,32 @@ function toggleWatchlist(item) {
 }
 
 function rememberPlay(item, season = state.currentSeason, episode = state.currentEpisode) {
+  updateContinueEntry(item, {
+    season,
+    episode,
+    resetProgress: true,
+  });
+}
+
+function updateContinueEntry(item, updates = {}) {
+  if (!item) return;
+  const previous = continueEntryFor(item) || {};
+  const sameEpisode =
+    item.type !== "tv" ||
+    (Number(previous.season || 1) === Number(updates.season || previous.season || 1) &&
+      Number(previous.episode || 1) === Number(updates.episode || previous.episode || 1));
+  const progressPercent = updates.resetProgress && !sameEpisode ? null : updates.progressPercent ?? previous.progressPercent ?? null;
+  const currentTime = updates.resetProgress && !sameEpisode ? null : updates.currentTime ?? previous.currentTime ?? null;
+  const duration = updates.resetProgress && !sameEpisode ? null : updates.duration ?? previous.duration ?? null;
   const next = state.profile.continueWatching.filter((entry) => entry.id !== item.id);
+
   next.unshift({
     id: item.id,
-    season: item.type === "tv" ? season : null,
-    episode: item.type === "tv" ? episode : null,
+    season: item.type === "tv" ? updates.season ?? previous.season ?? state.currentSeason : null,
+    episode: item.type === "tv" ? updates.episode ?? previous.episode ?? state.currentEpisode : null,
+    progressPercent,
+    currentTime,
+    duration,
     updatedAt: Date.now(),
   });
   state.profile.continueWatching = next.slice(0, 12);
@@ -875,6 +980,7 @@ function playItem(item, opts = {}) {
   const episode = item.type === "tv" ? opts.episode || state.currentEpisode || 1 : 1;
   state.currentSeason = season;
   state.currentEpisode = episode;
+  state.activePlayerId = item.id;
 
   const url = buildVidkingUrl(item, season, episode);
   syncPlayerLabels(item, season, episode);
@@ -927,6 +1033,7 @@ function renderPlayerControls(item) {
 function closePlayer() {
   els.playerOverlay.hidden = true;
   els.playerFrame.src = "about:blank";
+  state.activePlayerId = "";
   if (document.fullscreenElement) {
     document.exitFullscreen().catch?.(() => {});
   }
@@ -944,23 +1051,53 @@ function parsePlayerMessage(data) {
   if (!payload || typeof payload !== "object") return null;
 
   const candidates = [payload, payload.data, payload.detail, payload.progress, payload.media, payload.episode].filter(Boolean);
+  const parsed = {};
   for (const candidate of candidates) {
+    if (typeof candidate === "number") {
+      parsed.progressPercent = clampPercent(candidate <= 1 ? candidate * 100 : candidate);
+      continue;
+    }
+    if (!candidate || typeof candidate !== "object") continue;
+
     const season = Number(candidate.season ?? candidate.s ?? candidate.seasonNumber);
     const episode = Number(candidate.episode ?? candidate.e ?? candidate.episodeNumber);
     if (Number.isFinite(season) && season > 0 && Number.isFinite(episode) && episode > 0) {
-      return { season, episode };
+      parsed.season = season;
+      parsed.episode = episode;
     }
+
+    const currentTime = Number(candidate.currentTime ?? candidate.current ?? candidate.position ?? candidate.elapsed ?? candidate.seconds);
+    const duration = Number(candidate.duration ?? candidate.totalDuration ?? candidate.total ?? candidate.length);
+    const progressValue = Number(candidate.percent ?? candidate.percentage ?? candidate.progressPercent);
+    if (Number.isFinite(progressValue)) {
+      parsed.progressPercent = clampPercent(progressValue <= 1 ? progressValue * 100 : progressValue);
+    } else if (Number.isFinite(currentTime) && Number.isFinite(duration) && duration > 0) {
+      parsed.progressPercent = clampPercent((currentTime / duration) * 100);
+    }
+    if (Number.isFinite(currentTime) && currentTime >= 0) parsed.currentTime = currentTime;
+    if (Number.isFinite(duration) && duration > 0) parsed.duration = duration;
   }
-  return null;
+  return Object.keys(parsed).length ? parsed : null;
 }
 
 function handlePlayerMessage(event) {
   if (els.playerOverlay.hidden || event.source !== els.playerFrame.contentWindow) return;
   const update = parsePlayerMessage(event.data);
-  if (!update || state.selected?.type !== "tv") return;
-  state.currentSeason = update.season;
-  state.currentEpisode = update.episode;
-  syncPlayerLabels(state.selected, update.season, update.episode);
+  const activeItem = findItem(state.activePlayerId) || state.selected;
+  if (!update || !activeItem) return;
+  if (activeItem.type === "tv" && update.season && update.episode) {
+    state.currentSeason = update.season;
+    state.currentEpisode = update.episode;
+    syncPlayerLabels(activeItem, update.season, update.episode);
+  }
+  updateContinueEntry(activeItem, {
+    season: activeItem.type === "tv" ? update.season || state.currentSeason : null,
+    episode: activeItem.type === "tv" ? update.episode || state.currentEpisode : null,
+    progressPercent: update.progressPercent,
+    currentTime: update.currentTime,
+    duration: update.duration,
+  });
+  renderContinue();
 }
 
 async function hydrateHome() {
