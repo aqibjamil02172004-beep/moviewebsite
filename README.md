@@ -4,17 +4,17 @@ FlixDok is a static movie and TV search app with a premium streaming-library int
 
 ## Run
 
-Open `index.html` directly, or serve the folder with any static server.
+Open `public/index.html` directly, or serve the folder with any static server.
 
 ```powershell
-npx serve .
+npx serve public
 ```
 
 Then visit `http://localhost:5173`.
 
 ## Deploy on Vercel
 
-Import this GitHub repository in Vercel. No build command is needed; Vercel serves the static files and deploys `api/imdb-suggest.js` as the IMDb suggestion function.
+Import this GitHub repository in Vercel. No build command is needed; Vercel serves the `public` folder and deploys `api/imdb-suggest.js` as the IMDb suggestion function.
 
 ## APIs
 
