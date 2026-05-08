@@ -236,6 +236,7 @@ const SEED_TITLES = [
       { number: 2, episodes: 9 },
       { number: 3, episodes: 8 },
       { number: 4, episodes: 9 },
+      { number: 5, episodes: 8 },
     ],
     overview:
       "When a young boy vanishes, a small town uncovers secret experiments, supernatural forces, and one strange little girl.",
@@ -331,6 +332,8 @@ const state = {
   currentSeason: 1,
   currentEpisode: 1,
   searchToken: 0,
+  detailToken: 0,
+  detailLoadingId: "",
 };
 
 function loadProfile() {
@@ -633,7 +636,14 @@ function renderDetail(item) {
   const canPlay = Boolean(item.tmdbId);
   const episodeModel = getEpisodeModel(item);
   const season = episodeModel.find((entry) => entry.number === state.currentSeason) || episodeModel[0];
+  const selectedSeason = season?.number || 1;
   const episodeOptions = season ? season.episodes : [];
+  const selectedEpisode = episodeOptions.some((episode) => episode.number === state.currentEpisode)
+    ? state.currentEpisode
+    : episodeOptions[0]?.number || 1;
+  const seasonCount = episodeModel.length;
+  const episodeCount = episodeModel.reduce((total, entry) => total + entry.episodes.length, 0);
+  const isLoadingEpisodes = state.detailLoadingId === item.id && item.type === "tv";
   const people = (item.cast || []).slice(0, 8);
   const ratings = [
     item.rating ? `TMDB ${Number(item.rating).toFixed(1)}` : "",
@@ -668,21 +678,27 @@ function renderDetail(item) {
       item.type === "tv"
         ? `
       <div class="panel-section">
-        <h3>Episode</h3>
+        <div class="panel-section-head">
+          <h3>Episodes</h3>
+          <span>${safeText(`${seasonCount} ${seasonCount === 1 ? "season" : "seasons"}`)}</span>
+        </div>
         ${
           canPlay
             ? `
+          <p class="episode-summary ${isLoadingEpisodes ? "is-refreshing" : ""}">
+            ${safeText(isLoadingEpisodes ? "Checking latest season list..." : `${seasonCount} ${seasonCount === 1 ? "season" : "seasons"} / ${episodeCount} ${episodeCount === 1 ? "episode" : "episodes"}`)}
+          </p>
           <div class="episode-grid">
             <label>
               <span>Season</span>
               <select id="seasonSelect">
-                ${episodeModel.map((entry) => `<option value="${entry.number}" ${entry.number === state.currentSeason ? "selected" : ""}>Season ${entry.number}</option>`).join("")}
+                ${episodeModel.map((entry) => `<option value="${entry.number}" ${entry.number === selectedSeason ? "selected" : ""}>Season ${entry.number}</option>`).join("")}
               </select>
             </label>
             <label>
               <span>Episode</span>
               <select id="episodeSelect">
-                ${episodeOptions.map((ep) => `<option value="${ep.number}" ${ep.number === state.currentEpisode ? "selected" : ""}>Episode ${ep.number}${ep.name ? ` - ${safeText(ep.name)}` : ""}</option>`).join("")}
+                ${episodeOptions.map((ep) => `<option value="${ep.number}" ${ep.number === selectedEpisode ? "selected" : ""}>Episode ${ep.number}${ep.name ? ` - ${safeText(ep.name)}` : ""}</option>`).join("")}
               </select>
             </label>
           </div>
@@ -1199,11 +1215,17 @@ async function searchRemote(query) {
   state.selected = getVisibleItems()[0] || state.items[0] || null;
   scrollToTop();
   render();
+  enrichSelected(state.selected);
   enrichRatings(getVisibleItems());
 }
 
 async function enrichSelected(item) {
   if (!item) return;
+
+  const detailToken = ++state.detailToken;
+  const selectedId = item.id;
+  state.detailLoadingId = selectedId;
+  if (state.selected?.id === selectedId) render();
 
   const updates = {};
   if (state.profile.tmdbKey && item.tmdbId) {
@@ -1271,9 +1293,13 @@ async function enrichSelected(item) {
     }
   }
 
-  const merged = { ...item, ...updates };
-  state.items = state.items.map((candidate) => (candidate.id === item.id ? merged : candidate));
-  state.selected = merged;
+  if (detailToken !== state.detailToken) return;
+
+  const latest = findItem(selectedId) || item;
+  const merged = { ...latest, ...updates };
+  state.detailLoadingId = "";
+  state.items = state.items.map((candidate) => (candidate.id === selectedId ? merged : candidate));
+  if (state.selected?.id === selectedId) state.selected = merged;
   render();
   enrichRatings([merged]);
 }
@@ -1354,6 +1380,7 @@ function applySection(view, filter = view === "home" ? "all" : view) {
   state.selected = getVisibleItems()[0] || state.items[0] || null;
   scrollToTop();
   render();
+  enrichSelected(state.selected);
 }
 
 function clearSearchState() {
@@ -1495,6 +1522,7 @@ document.querySelectorAll(".segmented button").forEach((button) => {
     state.selected = getVisibleItems()[0] || state.items[0] || null;
     scrollToTop();
     render();
+    enrichSelected(state.selected);
   });
 });
 
