@@ -4,10 +4,10 @@ FlixDok is a static movie and TV search app with a premium streaming-library int
 
 ## Run
 
-Open `index.html` directly, or serve the folder with the included static server.
+Open `index.html` directly, or serve the folder with any static server.
 
 ```powershell
-node server.mjs
+npx serve .
 ```
 
 Then visit `http://localhost:5173`.

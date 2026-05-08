@@ -1,4 +1,4 @@
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   const query = String(request.query?.q || "").trim().toLowerCase();
 
   response.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=86400");
@@ -29,4 +29,4 @@ export default async function handler(request, response) {
   } catch {
     response.status(200).json({ d: [] });
   }
-}
+};
