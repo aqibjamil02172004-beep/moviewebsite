@@ -154,6 +154,90 @@ const SEED_TITLES = [
       "An exhausted laundromat owner discovers that only she can save existence by connecting with lives she could have led.",
   },
   {
+    type: "movie",
+    tmdbId: 579974,
+    imdbId: "tt8178634",
+    title: "RRR",
+    year: "2022",
+    region: "Bollywood",
+    genres: ["Action", "Drama"],
+    rating: 7.8,
+    runtime: "3h 7m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BNWMwODYyMjQtMTczMi00NTQ1LWFkYjItMGJhMWRkY2E3NDAyXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BNWMwODYyMjQtMTczMi00NTQ1LWFkYjItMGJhMWRkY2E3NDAyXkEyXkFqcGc@._V1_.jpg",
+    overview: "Two revolutionaries form a fearless friendship while fighting against colonial rule.",
+  },
+  {
+    type: "movie",
+    tmdbId: 872906,
+    imdbId: "tt15354916",
+    title: "Jawan",
+    year: "2023",
+    region: "Bollywood",
+    genres: ["Action", "Thriller"],
+    rating: 7.0,
+    runtime: "2h 49m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BMGExNGI1NDktOWI2Mi00NDM3LWIxMmQtNTQxYTgzMzI0MTA1XkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BMGExNGI1NDktOWI2Mi00NDM3LWIxMmQtNTQxYTgzMzI0MTA1XkEyXkFqcGc@._V1_.jpg",
+    overview: "A driven man takes on a dangerous system while confronting the wounds of his past.",
+  },
+  {
+    type: "movie",
+    tmdbId: 587412,
+    imdbId: "tt10698680",
+    title: "K.G.F: Chapter 2",
+    year: "2022",
+    region: "Bollywood",
+    genres: ["Action", "Crime"],
+    rating: 8.2,
+    runtime: "2h 46m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BZmQzZjVkZTUtYjI4ZC00ZDJmLWI0ZDUtZTFmMGM1Mzc5ZjIyXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BZmQzZjVkZTUtYjI4ZC00ZDJmLWI0ZDUtZTFmMGM1Mzc5ZjIyXkEyXkFqcGc@._V1_.jpg",
+    overview: "Rocky expands his empire while enemies close in from every direction.",
+  },
+  {
+    type: "movie",
+    tmdbId: 864692,
+    imdbId: "tt12844910",
+    title: "Pathaan",
+    year: "2023",
+    region: "Bollywood",
+    genres: ["Action", "Adventure"],
+    rating: 5.8,
+    runtime: "2h 26m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BNDdkNTY1MDQtY2I5MC00OTFlLTg5OWQtZWE2YzE5NWFiMDgzXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BNDdkNTY1MDQtY2I5MC00OTFlLTg5OWQtZWE2YzE5NWFiMDgzXkEyXkFqcGc@._V1_.jpg",
+    overview: "An exiled agent returns for a high-stakes mission against a global threat.",
+  },
+  {
+    type: "movie",
+    tmdbId: 360814,
+    imdbId: "tt5074352",
+    title: "Dangal",
+    year: "2016",
+    region: "Bollywood",
+    genres: ["Drama", "Sport"],
+    rating: 8.3,
+    runtime: "2h 41m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BMTQ4MzQzMzM2Nl5BMl5BanBnXkFtZTgwMTQ1NzU3MDI@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BMTQ4MzQzMzM2Nl5BMl5BanBnXkFtZTgwMTQ1NzU3MDI@._V1_.jpg",
+    overview: "A former wrestler trains his daughters to become world-class champions.",
+  },
+  {
+    type: "movie",
+    tmdbId: 20453,
+    imdbId: "tt1187043",
+    title: "3 Idiots",
+    year: "2009",
+    region: "Bollywood",
+    genres: ["Comedy", "Drama"],
+    rating: 8.4,
+    runtime: "2h 50m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BNzc4ZWQ3NmYtODE0Ny00YTQ4LTlkZWItNTBkMGQ0MmUwMmJlXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BNzc4ZWQ3NmYtODE0Ny00YTQ4LTlkZWItNTBkMGQ0MmUwMmJlXkEyXkFqcGc@._V1_.jpg",
+    overview: "Three friends challenge a rigid education system while chasing their own meaning of success.",
+  },
+  {
     type: "tv",
     tmdbId: 1396,
     tvmazeId: 169,
@@ -338,6 +422,7 @@ const state = {
   searchToken: 0,
   detailToken: 0,
   detailLoadingId: "",
+  heroIndex: 0,
 };
 
 function loadProfile() {
@@ -356,11 +441,14 @@ function saveProfile() {
 }
 
 function normalizeSeed(item) {
+  const posterUrl = item.posterUrl || imageUrl(item.poster, "w500");
+  const backdropUrl = item.backdropUrl || imageUrl(item.backdrop || item.poster, "original");
   return {
     ...item,
     id: `${item.type}-${item.tmdbId}`,
-    posterUrl: imageUrl(item.poster, "w500"),
-    backdropUrl: imageUrl(item.backdrop, "original"),
+    posterUrl,
+    backdropUrl,
+    region: item.region || (item.type === "movie" ? "Hollywood" : "TV"),
     source: APP_NAME,
   };
 }
@@ -415,7 +503,7 @@ function searchForms(value) {
 function queryMatchesItem(item, query) {
   const queryForms = searchForms(query);
   if (!queryForms.length) return true;
-  const values = [item.title, item.year, item.type, item.source, item.imdbId, item.tmdbId, ...(item.genres || [])];
+  const values = [item.title, item.year, item.type, item.source, item.region, item.imdbId, item.tmdbId, ...(item.genres || [])];
   const haystacks = searchForms(values.join(" "));
   return queryForms.some((form) => {
     if (haystacks.some((haystack) => haystack.includes(form))) return true;
@@ -554,6 +642,7 @@ function render() {
 
   const showBrowse = Boolean(state.query) || state.view !== "home";
   const heroItem = featuredItem(visible) || state.selected;
+  if (!showBrowse && heroItem) state.selected = heroItem;
   renderHero(heroItem);
   renderContinue();
   renderRails(showBrowse ? [] : visible);
@@ -564,7 +653,7 @@ function render() {
   els.browseBlock.hidden = !showBrowse;
   els.hero.classList.toggle("is-search-mode", Boolean(state.query));
   els.hero.classList.toggle("is-poster-art", usesPosterArtwork(heroItem));
-  els.emptyState.hidden = visible.length > 0;
+  els.emptyState.hidden = visible.length > 0 || state.isSearching;
   if (!visible.length) {
     els.emptyState.innerHTML = `<strong>No titles found</strong><span>Try another search or clear the current filter.</span>`;
   }
@@ -583,7 +672,11 @@ function renderHeadings(count) {
 }
 
 function featuredItem(items) {
-  return items.find((item) => item.backdropUrl && !usesPosterArtwork(item)) || items[0] || null;
+  const candidates = sortedByScore(items).filter((item) => item.backdropUrl && !usesPosterArtwork(item));
+  if (!state.query && state.view === "home" && candidates.length) {
+    return candidates[state.heroIndex % candidates.length];
+  }
+  return candidates[0] || items[0] || null;
 }
 
 function scoreValue(item) {
@@ -644,6 +737,10 @@ function renderRails(items) {
   }
 
   const allItems = sortedByScore(state.items);
+  const movieItems = state.items.filter((item) => item.type === "movie");
+  const hollywoodItems = sortedByScore(movieItems.filter((item) => item.region === "Hollywood"));
+  const bollywoodItems = sortedByScore(movieItems.filter((item) => item.region === "Bollywood"));
+  const sciFiItems = sortedByScore(state.items.filter((item) => (item.genres || []).some((genre) => /sci-fi|mystery|thriller/i.test(genre))));
   const watchlistItems = state.items.filter((item) => isWatchlisted(item));
   const sections = [
     {
@@ -652,6 +749,18 @@ function renderRails(items) {
       items: allItems.slice(0, 10),
       card: "poster",
       ranked: true,
+    },
+    {
+      title: "Bollywood Movies",
+      subtitle: "High-energy Indian cinema ready to open",
+      items: bollywoodItems.slice(0, 12),
+      card: "poster",
+    },
+    {
+      title: "Hollywood Movies",
+      subtitle: "Big-screen favorites and modern blockbusters",
+      items: hollywoodItems.slice(0, 12),
+      card: "wide",
     },
     {
       title: "Trending Movies",
@@ -666,10 +775,16 @@ function renderRails(items) {
       card: "wide",
     },
     {
-      title: "Top Rated",
-      subtitle: "The strongest library picks",
+      title: "Mind-Bending Picks",
+      subtitle: "Sci-fi, mystery, and late-night rabbit holes",
+      items: sciFiItems.slice(0, 12),
+      card: "poster",
+    },
+    {
+      title: "Top Rated Library",
+      subtitle: "The strongest picks across the whole catalog",
       items: allItems.slice(0, 12),
-      card: "wide",
+      card: "compact",
     },
   ];
 
@@ -697,8 +812,16 @@ function renderRail(section) {
           <p>${safeText(section.subtitle)}</p>
         </div>
       </div>
-      <div class="rail-track ${section.card === "wide" ? "is-wide" : ""}">
-        ${section.items.map((item, index) => renderMediaCard(item, { rank: section.ranked ? index + 1 : 0, wide: section.card === "wide" })).join("")}
+      <div class="rail-track ${section.card === "wide" ? "is-wide" : ""} ${section.card === "compact" ? "is-compact-row" : ""}">
+        ${section.items
+          .map((item, index) =>
+            renderMediaCard(item, {
+              rank: section.ranked ? index + 1 : 0,
+              wide: section.card === "wide",
+              compact: section.card === "compact",
+            }),
+          )
+          .join("")}
       </div>
     </section>
   `;
@@ -707,20 +830,25 @@ function renderRail(section) {
 function renderMediaCard(item, opts = {}) {
   const artwork = opts.wide ? item.backdropUrl || item.posterUrl : item.posterUrl || item.backdropUrl;
   const progress = playbackProgress(item);
+  const meta = [item.runtime, itemYear(item), mediaLabel(item.type)].filter(Boolean).join(" / ");
+  const subline = (item.genres || []).slice(0, 2).join(" / ") || meta;
   return `
-    <button class="media-card ${opts.wide ? "is-wide" : ""}" type="button" data-action="open-title" data-id="${safeText(item.id)}">
+    <button class="media-card ${opts.wide ? "is-wide" : ""} ${opts.compact ? "is-compact" : ""}" type="button" data-action="open-title" data-id="${safeText(item.id)}">
       <span class="media-art">
         ${artwork ? `<img src="${safeText(artwork)}" alt="${safeText(item.title)} artwork" loading="lazy" />` : ""}
         ${opts.rank ? `<span class="rank-badge">#${String(opts.rank).padStart(2, "0")}</span>` : ""}
+        <span class="media-overlay-meta">
+          <b>${safeText(scoreLabel(item))}</b>
+          <span>${safeText(meta)}</span>
+        </span>
+        <span class="quick-play" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+        ${progress ? progressMarkup(progress, "art-progress") : ""}
       </span>
       <span class="media-card-copy">
         <strong>${safeText(item.title)}</strong>
-        <span>
-          <b>${safeText(scoreLabel(item))}</b>
-          <span>${safeText(itemYear(item))}</span>
-          <span>${safeText(mediaLabel(item.type))}</span>
-        </span>
-        ${progress ? progressMarkup(progress, "card-progress") : ""}
+        <span>${safeText(subline)}</span>
       </span>
     </button>
   `;
@@ -729,6 +857,10 @@ function renderMediaCard(item, opts = {}) {
 function renderGrid(items) {
   const isSearch = Boolean(state.query);
   els.posterGrid.classList.toggle("search-results", isSearch);
+  if (state.isSearching && !items.length) {
+    els.posterGrid.innerHTML = renderSkeletonCards(isSearch ? 4 : 8);
+    return;
+  }
   els.posterGrid.innerHTML = items
     .map(
       (item) => {
@@ -740,6 +872,14 @@ function renderGrid(items) {
         <span class="poster-art">
           ${item.posterUrl ? `<img src="${safeText(item.posterUrl)}" alt="${safeText(item.title)} poster" loading="lazy" />` : ""}
           <span class="poster-badge">${safeText(scoreLabel(item))}</span>
+          <span class="poster-overlay">
+            <span>${safeText(item.runtime || itemYear(item))}</span>
+            <span>${safeText(mediaLabel(item.type))}</span>
+          </span>
+          <span class="quick-play" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+          ${progress ? progressMarkup(progress, "art-progress") : ""}
         </span>
         <span class="card-body">
           <h3>${safeText(item.title)}</h3>
@@ -757,6 +897,19 @@ function renderGrid(items) {
       },
     )
     .join("");
+}
+
+function renderSkeletonCards(count = 8) {
+  return Array.from(
+    { length: count },
+    () => `
+      <span class="skeleton-card" aria-hidden="true">
+        <span></span>
+        <b></b>
+        <i></i>
+      </span>
+    `,
+  ).join("");
 }
 
 function renderDetail(item) {
@@ -1540,7 +1693,7 @@ function stripTags(html) {
 async function searchRemote(query) {
   const token = ++state.searchToken;
   state.isSearching = true;
-  renderHeadings(getVisibleItems().length);
+  render();
 
   const localMatches = SEED_TITLES.map(normalizeSeed).filter((item) => queryMatchesItem(item, query));
   const variants = searchQueryVariants(query);
@@ -1983,6 +2136,16 @@ window.addEventListener("popstate", () => {
     render();
   }
 });
+
+function startHeroRotation() {
+  window.setInterval(() => {
+    if (state.page !== "home" || state.view !== "home" || state.query || !els.playerOverlay.hidden || els.settingsModal.open) return;
+    const candidates = sortedByScore(getVisibleItems()).filter((item) => item.backdropUrl && !usesPosterArtwork(item));
+    if (candidates.length < 2) return;
+    state.heroIndex = (state.heroIndex + 1) % candidates.length;
+    render();
+  }, 9000);
+}
 document.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   const typing = isTypingTarget(event.target);
@@ -2063,3 +2226,4 @@ state.selected = state.items[0];
 scrollToTop("auto");
 if (!restoreRouteFromHash()) render();
 hydrateHome();
+startHeroRotation();

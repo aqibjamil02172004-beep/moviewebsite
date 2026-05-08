@@ -41,6 +41,19 @@ body {
     linear-gradient(180deg, #080a0f 0%, var(--bg) 48%);
 }
 
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3), transparent 68%);
+  content: "";
+}
+
 body::selection {
   color: #111;
   background: var(--accent);
@@ -604,6 +617,7 @@ svg {
 
 .media-rail {
   min-width: 0;
+  animation: fade-up 520ms ease both;
 }
 
 .rail-track,
@@ -638,6 +652,11 @@ svg {
   background: transparent;
   text-align: left;
   scroll-snap-align: start;
+  transform: translateY(0);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
 }
 
 .media-card {
@@ -655,6 +674,11 @@ svg {
   border-radius: var(--radius);
   background: #121722;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+  transform: perspective(900px) rotateX(0) rotateY(0);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 220ms ease;
 }
 
 .media-art {
@@ -670,6 +694,10 @@ svg {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform: scale(1);
+  transition:
+    opacity 180ms ease,
+    transform 260ms ease;
 }
 
 .media-card:not(.is-wide) .media-art img,
@@ -681,14 +709,36 @@ svg {
 .poster-art::after {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 56%, rgba(0, 0, 0, 0.72));
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.16), transparent 28%),
+    linear-gradient(180deg, transparent 42%, rgba(0, 0, 0, 0.82));
   content: "";
+}
+
+.media-card:hover,
+.poster-card:hover,
+.mini-card:hover {
+  transform: translateY(-4px);
 }
 
 .media-card:hover .media-art,
 .poster-card:hover .poster-art,
 .mini-card:hover {
   border-color: rgba(216, 177, 95, 0.55);
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.46),
+    0 0 0 1px rgba(216, 177, 95, 0.16);
+}
+
+.media-card:hover .media-art,
+.poster-card:hover .poster-art {
+  transform: perspective(900px) rotateX(1deg) rotateY(-1.4deg);
+}
+
+.media-card:hover img,
+.poster-card:hover img {
+  transform: scale(1.045);
 }
 
 .rank-badge {
@@ -705,9 +755,99 @@ svg {
   line-height: 1;
 }
 
+.media-overlay-meta,
+.poster-overlay {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 18px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: rgba(247, 247, 242, 0.86);
+  font-size: 0.72rem;
+  font-weight: 800;
+  transform: translateY(4px);
+  opacity: 0.92;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.media-overlay-meta b {
+  color: #111114;
+  background: var(--accent);
+}
+
+.media-overlay-meta b,
+.poster-overlay span,
+.quick-play {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+}
+
+.poster-overlay span,
+.quick-play {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.44);
+}
+
+.quick-play {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 3;
+  justify-content: center;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  color: #111114;
+  background: var(--accent);
+  opacity: 0;
+  transform: translateY(-6px) scale(0.94);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.quick-play svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.media-card:hover .quick-play,
+.poster-card:hover .quick-play,
+.media-card:focus-visible .quick-play,
+.poster-card:focus-visible .quick-play {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.media-card:hover .media-overlay-meta,
+.poster-card:hover .poster-overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .media-card-copy {
   display: grid;
-  gap: 5px;
+  gap: 4px;
+  transform: translateY(0);
+  transition:
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.media-card:hover .media-card-copy {
+  transform: translateY(-2px);
 }
 
 .media-card-copy strong,
@@ -728,6 +868,12 @@ svg {
   gap: 7px;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.media-card-copy > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .browse-block[hidden],
@@ -773,14 +919,19 @@ svg {
   min-height: 136px;
 }
 
+.poster-card.search-card .poster-overlay,
+.poster-card.search-card .quick-play {
+  display: none;
+}
+
 .poster-art {
   aspect-ratio: 2 / 3;
 }
 
 .poster-badge {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  top: 8px;
+  left: 8px;
   z-index: 2;
   min-width: 42px;
   padding: 5px 8px;
@@ -793,7 +944,6 @@ svg {
 }
 
 .poster-card h3 {
-  min-height: 2.55em;
   margin: 0;
   font-size: 0.96rem;
   line-height: 1.28;
@@ -927,10 +1077,61 @@ svg {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--accent), #f5d98d);
+  transform-origin: left center;
+  animation: progress-grow 620ms ease both;
 }
 
 .card-progress {
   margin-top: 2px;
+}
+
+.art-progress {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  z-index: 4;
+  gap: 4px;
+}
+
+.art-progress .watch-progress-line {
+  display: none;
+}
+
+.art-progress .progress-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.skeleton-card {
+  display: grid;
+  gap: 10px;
+  min-height: 260px;
+}
+
+.skeleton-card span,
+.skeleton-card b,
+.skeleton-card i {
+  display: block;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.055));
+  background-size: 220% 100%;
+  animation: skeleton-sheen 1.15s linear infinite;
+}
+
+.skeleton-card span {
+  aspect-ratio: 2 / 3;
+}
+
+.skeleton-card b {
+  width: 78%;
+  height: 17px;
+}
+
+.skeleton-card i {
+  width: 54%;
+  height: 13px;
 }
 
 .text-button {
@@ -1289,6 +1490,34 @@ select option {
   pointer-events: none;
 }
 
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes skeleton-sheen {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+@keyframes progress-grow {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
 @media (max-width: 1400px) {
   .site-header {
     gap: 10px 18px;
@@ -1397,11 +1626,15 @@ select option {
   }
 
   .rail-track {
-    grid-auto-columns: minmax(142px, 42vw);
+    grid-auto-columns: minmax(138px, 38vw);
   }
 
   .rail-track.is-wide {
-    grid-auto-columns: minmax(250px, 82vw);
+    grid-auto-columns: minmax(240px, 72vw);
+  }
+
+  .rail-track.is-compact-row {
+    grid-auto-columns: minmax(132px, 36vw);
   }
 
   .mini-strip {
@@ -1424,6 +1657,10 @@ select option {
   .poster-card.search-card .poster-art {
     width: 82px;
     min-height: 116px;
+  }
+
+  .poster-card:not(.search-card) .poster-art {
+    max-height: 300px;
   }
 
   .title-hero {
@@ -1454,6 +1691,81 @@ select option {
     grid-column: 1 / -1;
     order: 2;
     overflow-x: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding-bottom: 78px;
+  }
+
+  .site-header {
+    position: relative;
+    backdrop-filter: none;
+  }
+
+  .nav-list {
+    position: fixed;
+    right: 12px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 12px;
+    z-index: 120;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 24px;
+    background: rgba(8, 9, 12, 0.86);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(18px);
+  }
+
+  .nav-item {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    min-height: 50px;
+    padding: 5px 4px;
+    border-radius: 18px;
+    font-size: 0.72rem;
+    line-height: 1;
+  }
+
+  .nav-item svg {
+    display: block;
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .poster-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .poster-card:not(.search-card) .poster-art {
+    max-height: 245px;
+  }
+
+  .poster-card.search-card {
+    grid-template-columns: 74px minmax(0, 1fr);
+    gap: 10px;
+    min-height: 116px;
+    padding: 8px;
+  }
+
+  .poster-card.search-card .poster-art {
+    width: 74px;
+    min-height: 106px;
+  }
+
+  .card-overview {
+    -webkit-line-clamp: 2;
+  }
+
+  .quick-play {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -1516,6 +1828,39 @@ select option {
     grid-column: 1 / -1;
   }
 
+  .rail-stack {
+    gap: 42px;
+  }
+
+  .rail-track {
+    grid-auto-columns: minmax(132px, 43vw);
+    gap: 12px;
+  }
+
+  .rail-track.is-wide {
+    grid-auto-columns: minmax(230px, 78vw);
+  }
+
+  .rail-track.is-compact-row {
+    grid-auto-columns: minmax(122px, 39vw);
+  }
+
+  .media-card.is-wide .media-art {
+    aspect-ratio: 16 / 10;
+  }
+
+  .media-overlay-meta,
+  .poster-overlay {
+    gap: 4px;
+    font-size: 0.64rem;
+  }
+
+  .media-overlay-meta b,
+  .poster-overlay span {
+    min-height: 22px;
+    padding: 0 7px;
+  }
+
   .section-heading,
   .rail-head {
     align-items: start;
@@ -1544,5 +1889,31 @@ select option {
 
   .episode-list {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .nav-item {
+    font-size: 0.66rem;
+  }
+
+  .poster-card h3,
+  .media-card-copy strong {
+    font-size: 0.78rem;
+  }
+
+  .poster-card:not(.search-card) .poster-art {
+    max-height: 220px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
   }
 }
