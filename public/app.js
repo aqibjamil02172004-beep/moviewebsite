@@ -840,7 +840,7 @@ function buildVidkingUrl(item, season = 1, episode = 1) {
   params.set("color", cleanHex(state.profile.playerColor));
   if (state.profile.autoPlay) params.set("autoPlay", "true");
   if (item.type === "tv" && state.profile.nextEpisode) params.set("nextEpisode", "true");
-  if (item.type === "tv") params.set("episodeSelector", "false");
+  if (item.type === "tv") params.set("episodeSelector", "true");
   return `${base}?${params.toString()}`;
 }
 
