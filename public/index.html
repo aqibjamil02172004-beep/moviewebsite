@@ -148,6 +148,8 @@
         allowfullscreen
         referrerpolicy="no-referrer"
       ></iframe>
+      <div class="player-message" id="playerMessage" hidden></div>
+      <div class="player-episode-panel" id="playerEpisodePanel" hidden></div>
     </div>
 
     <dialog class="modal" id="settingsModal">
@@ -189,7 +191,7 @@
           </label>
           <label class="check-row">
             <input id="episodeSelectorInput" type="checkbox" />
-            <span>Show provider episode selector for TV</span>
+            <span>Use FlixDok episode selector for TV</span>
           </label>
           <label class="check-row">
             <input id="nextEpisodeInput" type="checkbox" />
