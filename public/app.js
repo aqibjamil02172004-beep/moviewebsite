@@ -2894,11 +2894,9 @@ els.searchInput.addEventListener(
     cancelActiveSearch();
     state.query = els.searchInput.value.trim();
     state.page = "home";
-    if (isCategoryView() || state.view === "watchlist") {
-      state.view = "home";
-      state.filter = "all";
-      resetCategoryState();
-    }
+    state.view = "home";
+    state.filter = "all";
+    resetCategoryState();
     if (state.query) {
       showInstantSearchResults(state.query);
       state.selected = displayItems()[0] || state.items[0] || null;
