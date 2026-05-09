@@ -1008,6 +1008,15 @@ function getVisibleItems() {
   return items;
 }
 
+function itemMatchesActiveScope(item) {
+  if (!item) return false;
+  const region = categoryRegionForView();
+  if (region) return item.type === "movie" && item.region === region;
+  if (state.view === "movie" || state.view === "tv") return item.type === state.view;
+  if (state.filter !== "all") return item.type === state.filter;
+  return true;
+}
+
 function isCategoryView(view = state.view) {
   return CATEGORY_VIEWS.has(view);
 }
@@ -1559,7 +1568,7 @@ function renderDetail(item) {
           canPlay
             ? `
           <p class="episode-summary ${isLoadingEpisodes ? "is-refreshing" : ""}">
-            ${safeText(isLoadingEpisodes ? "Checking latest season list..." : `Choose a season and episode, then press Play.`)}
+            ${safeText(isLoadingEpisodes ? "Checking latest season list..." : `Choose a season, then click an episode to play.`)}
           </p>
           <div class="episode-grid">
             <label>
@@ -1568,22 +1577,16 @@ function renderDetail(item) {
                 ${episodeModel.map((entry) => `<option value="${entry.number}" ${entry.number === selectedSeason ? "selected" : ""}>Season ${entry.number}</option>`).join("")}
               </select>
             </label>
-            <label>
-              <span>Episode</span>
-              <select id="episodeSelect">
-                ${episodeOptions.map((ep) => `<option value="${ep.number}" ${ep.number === selectedEpisode ? "selected" : ""}>Episode ${ep.number}${ep.name ? ` - ${safeText(ep.name)}` : ""}</option>`).join("")}
-              </select>
-            </label>
           </div>
           <div class="episode-list">
             ${episodeOptions
               .slice(0, 16)
               .map(
                 (ep) => `
-                <button class="episode-card ${ep.number === selectedEpisode ? "is-active" : ""}" type="button" data-action="choose-episode" data-id="${safeText(item.id)}" data-season="${selectedSeason}" data-episode="${ep.number}">
+                <button class="episode-card ${ep.number === selectedEpisode ? "is-active" : ""}" type="button" data-action="play-episode" data-id="${safeText(item.id)}" data-season="${selectedSeason}" data-episode="${ep.number}">
                   <span>Episode ${ep.number}</span>
                   <strong>${safeText(ep.name || `Season ${selectedSeason}, Episode ${ep.number}`)}</strong>
-                  <small>${canPlay ? "Available" : "Not available"}</small>
+                  <small>${canPlay ? "Play episode" : "Not available"}</small>
                 </button>
               `,
               )
@@ -1621,18 +1624,11 @@ function renderDetail(item) {
   `;
 
   const seasonSelect = document.getElementById("seasonSelect");
-  const episodeSelect = document.getElementById("episodeSelect");
   if (seasonSelect) {
     seasonSelect.addEventListener("change", () => {
       state.currentSeason = Number(seasonSelect.value);
       const nextSeason = getEpisodeModel(item).find((entry) => entry.number === state.currentSeason);
       state.currentEpisode = nextSeason?.episodes?.[0]?.number || 1;
-      renderDetail(item);
-    });
-  }
-  if (episodeSelect) {
-    episodeSelect.addEventListener("change", () => {
-      state.currentEpisode = Number(episodeSelect.value);
       renderDetail(item);
     });
   }
@@ -1642,6 +1638,7 @@ function renderContinue() {
   const entries = state.profile.continueWatching
     .map((entry) => ({ entry, item: findItem(entry.id) }))
     .filter(({ item }) => item)
+    .filter(({ item }) => itemMatchesActiveScope(item))
     .slice(0, 8);
 
   els.continueRow.hidden = entries.length === 0;
@@ -1846,7 +1843,9 @@ function buildVidkingUrl(item, season = 1, episode = 1) {
 
   const params = new URLSearchParams();
   params.set("color", cleanHex(state.profile.playerColor));
-  if (state.profile.autoPlay) params.set("autoPlay", "true");
+  params.set("autoPlay", "true");
+  params.set("autoplay", "true");
+  params.set("auto_play", "true");
   if (item.type === "tv" && state.profile.nextEpisode) params.set("nextEpisode", "true");
   if (item.type === "tv") params.set("episodeSelector", "true");
   return `${base}?${params.toString()}`;
@@ -1915,13 +1914,14 @@ function playItem(item, opts = {}) {
   state.currentEpisode = episode;
   state.activePlayerId = item.id;
 
+  els.playerOverlay.hidden = false;
+  renderPlayerControls(item);
   const url = buildVidkingUrl(item, season, episode);
   syncPlayerLabels(item, season, episode);
   setPlayerSource(url);
-  els.playerOverlay.hidden = false;
-  renderPlayerControls(item);
   rememberPlay(item, season, episode);
   renderContinue();
+  window.setTimeout(() => els.playerFrame.focus?.(), 0);
 
   const requestFullscreen = els.playerOverlay.requestFullscreen || els.playerOverlay.webkitRequestFullscreen;
   if (requestFullscreen) {
@@ -2856,6 +2856,15 @@ document.addEventListener("click", (event) => {
         renderDetail(item);
       }
       break;
+    case "play-episode":
+      if (item) {
+        const season = Number(button.dataset.season || 1);
+        const episode = Number(button.dataset.episode || 1);
+        state.currentSeason = season;
+        state.currentEpisode = episode;
+        playItem(item, { season, episode });
+      }
+      break;
     case "attach-tmdb": {
       const input = document.getElementById("manualTmdbInput");
       const tmdbId = Number(input?.value || 0);
@@ -2879,33 +2888,17 @@ document.querySelectorAll(".nav-item").forEach((button) => {
   });
 });
 
-document.querySelectorAll(".segmented button").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.filter = button.dataset.filter;
-    if (state.view === "movie" && state.filter !== "movie") state.view = "home";
-    if (state.view === "tv" && state.filter !== "tv") state.view = "home";
-    if (isCategoryView() && state.filter !== "movie") {
-      state.view = "home";
-      resetCategoryState();
-    }
-    setActiveNav();
-    setActiveFilter();
-    state.selected = displayItems()[0] || state.items[0] || null;
-    scrollToTop();
-    render();
-    enrichSelected(state.selected);
-  });
-});
-
 els.searchInput.addEventListener(
   "input",
   debounce(() => {
     cancelActiveSearch();
     state.query = els.searchInput.value.trim();
     state.page = "home";
-    state.view = "home";
-    state.filter = "all";
-    resetCategoryState();
+    if (isCategoryView() || state.view === "watchlist") {
+      state.view = "home";
+      state.filter = "all";
+      resetCategoryState();
+    }
     if (state.query) {
       showInstantSearchResults(state.query);
       state.selected = displayItems()[0] || state.items[0] || null;

@@ -217,7 +217,7 @@ svg {
 .header-actions {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: minmax(220px, 1fr) minmax(210px, 250px) 42px minmax(132px, auto);
+  grid-template-columns: minmax(240px, 1fr) 42px minmax(132px, auto);
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -269,36 +269,6 @@ svg {
 
 .clear-search.is-visible {
   display: grid;
-}
-
-.segmented {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(48px, 1fr));
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-  height: 40px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.055);
-}
-
-.segmented button {
-  border: 0;
-  border-radius: 999px;
-  padding: 0 10px;
-  color: var(--muted);
-  background: transparent;
-  cursor: pointer;
-  font-weight: 800;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.segmented button.is-active {
-  color: #111114;
-  background: var(--accent);
 }
 
 .icon-button {
@@ -1472,7 +1442,7 @@ svg {
 
 .episode-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 280px));
+  grid-template-columns: minmax(180px, 280px);
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -1776,7 +1746,7 @@ select option {
   }
 
   .header-actions {
-    grid-template-columns: minmax(220px, 1fr) minmax(190px, 240px) 42px auto;
+    grid-template-columns: minmax(220px, 1fr) 42px auto;
   }
 }
 
@@ -1834,21 +1804,6 @@ select option {
     grid-column: 1;
     width: calc(100vw - var(--page-pad) - var(--page-pad));
     max-width: 100%;
-  }
-
-  .segmented {
-    grid-column: 1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: calc(100vw - var(--page-pad) - var(--page-pad));
-    max-width: 100%;
-    overflow: hidden;
-  }
-
-  .segmented button {
-    min-width: 0;
-    padding: 0 6px;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .header-actions .icon-button {
