@@ -1329,8 +1329,9 @@ function renderMediaCard(item, opts = {}) {
   const meta = [item.runtime, itemYear(item), mediaLabel(item.type)].filter(Boolean).join(" / ");
   const subline = (item.genres || []).slice(0, 2).join(" / ") || meta;
   const posterSourceClass = opts.wide && usesPosterArtwork(item) ? "is-poster-source" : "";
+  const href = `#/title/${encodeURIComponent(item.id)}`;
   return `
-    <button class="media-card ${opts.wide ? "is-wide" : ""} ${opts.compact ? "is-compact" : ""} ${posterSourceClass}" type="button" data-action="open-title" data-id="${safeText(item.id)}">
+    <a class="media-card ${opts.wide ? "is-wide" : ""} ${opts.compact ? "is-compact" : ""} ${posterSourceClass}" href="${safeText(href)}" data-action="open-title" data-id="${safeText(item.id)}">
       <span class="media-art">
         ${artwork ? `<img src="${safeText(artwork)}" alt="${safeText(item.title)} artwork" loading="lazy" />` : ""}
         ${opts.rank ? `<span class="rank-badge">#${String(opts.rank).padStart(2, "0")}</span>` : ""}
@@ -1347,7 +1348,7 @@ function renderMediaCard(item, opts = {}) {
         <strong>${safeText(item.title)}</strong>
         <span>${safeText(subline)}</span>
       </span>
-    </button>
+    </a>
   `;
 }
 
@@ -1364,8 +1365,9 @@ function renderGrid(items) {
         const status = providerStatus(item);
         const source = item.source || APP_NAME;
         const progress = playbackProgress(item);
+        const href = `#/title/${encodeURIComponent(item.id)}`;
         return `
-      <button class="poster-card ${isSearch ? "search-card" : ""} ${state.selected?.id === item.id ? "is-selected" : ""}" type="button" data-action="open-title" data-id="${safeText(item.id)}">
+      <a class="poster-card ${isSearch ? "search-card" : ""} ${state.selected?.id === item.id ? "is-selected" : ""}" href="${safeText(href)}" data-action="open-title" data-id="${safeText(item.id)}">
         <span class="poster-art">
           ${item.posterUrl ? `<img src="${safeText(item.posterUrl)}" alt="${safeText(item.title)} poster" loading="lazy" />` : ""}
           <span class="poster-badge">${safeText(scoreLabel(item))}</span>
@@ -1389,7 +1391,7 @@ function renderGrid(items) {
           ${isSearch && item.overview ? `<span class="card-overview">${safeText(item.overview)}</span>` : ""}
           ${progress ? progressMarkup(progress, "card-progress") : ""}
         </span>
-      </button>
+      </a>
     `;
       },
     )
@@ -2992,10 +2994,10 @@ document.addEventListener("pointerdown", (event) => {
     startX: event.clientX,
     scrollLeft: track.scrollLeft,
     distance: 0,
+    captured: false,
     moved: false,
   };
   track.classList.add("is-pressed");
-  track.setPointerCapture?.(event.pointerId);
 });
 
 document.addEventListener("pointermove", (event) => {
@@ -3006,6 +3008,10 @@ document.addEventListener("pointermove", (event) => {
   if (distance > DRAG_START_THRESHOLD) {
     dragScroll.moved = true;
     dragScroll.track.classList.add("is-dragging");
+    if (!dragScroll.captured) {
+      dragScroll.track.setPointerCapture?.(event.pointerId);
+      dragScroll.captured = true;
+    }
     event.preventDefault();
   }
   if (dragScroll.moved) dragScroll.track.scrollLeft = dragScroll.scrollLeft - delta;
@@ -3013,12 +3019,14 @@ document.addEventListener("pointermove", (event) => {
 
 function finishDragScroll(event) {
   if (!dragScroll) return;
-  const { track, pointerId, moved, distance } = dragScroll;
+  const { track, pointerId, moved, distance, captured } = dragScroll;
   if (!event || event.pointerId === pointerId) {
-    try {
-      track.releasePointerCapture?.(pointerId);
-    } catch {
-      // Pointer capture can already be released if the browser scrolls natively.
+    if (captured) {
+      try {
+        track.releasePointerCapture?.(pointerId);
+      } catch {
+        // Pointer capture can already be released if the browser scrolls natively.
+      }
     }
     track.classList.remove("is-pressed");
     track.classList.remove("is-dragging");
@@ -3068,6 +3076,10 @@ window.addEventListener("popstate", () => {
     }
     render();
   }
+});
+window.addEventListener("hashchange", () => {
+  if (restoreRouteFromHash()) return;
+  if (!location.hash && state.page === "detail") closeTitle(false);
 });
 
 function startHeroRotation() {

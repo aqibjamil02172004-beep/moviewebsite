@@ -788,6 +788,7 @@ svg {
 .mini-card {
   color: inherit;
   background: transparent;
+  text-decoration: none;
   text-align: left;
   scroll-snap-align: start;
   transform: translateY(0);
