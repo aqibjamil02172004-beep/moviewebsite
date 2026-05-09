@@ -5,6 +5,7 @@ const STORAGE_KEY = "flixdok.profile.v1";
 const LEGACY_STORAGE_KEY = "mushfiq.profile.v1";
 const TMDB_API = "https://api.themoviedb.org/3";
 const TMDB_IMAGE = "https://image.tmdb.org/t/p";
+const TMDB_PROXY = "https://db.videasy.net/3";
 const TVMAZE_API = "https://api.tvmaze.com";
 const WIKIDATA_API = "https://www.wikidata.org/w/api.php";
 const WIKIMEDIA_FILE = "https://commons.wikimedia.org/wiki/Special:FilePath/";
@@ -687,8 +688,13 @@ function mediaLabel(type) {
   return type === "tv" ? "TV Show" : "Movie";
 }
 
+function numericTmdbId(value) {
+  const id = String(value || "").trim();
+  return /^\d+$/.test(id) ? id : "";
+}
+
 function providerId(item) {
-  return String(item?.tmdbId || item?.imdbId || "").trim();
+  return numericTmdbId(item?.tmdbId);
 }
 
 function hasPlayableId(item) {
@@ -764,7 +770,8 @@ function searchForms(value) {
 
 function searchableFields(item) {
   const aliases = Array.isArray(item.aliases) ? item.aliases : [];
-  const titleFields = uniqueValues([item.title, item.originalTitle, item.englishTitle, ...aliases]);
+  const searchAliases = Array.isArray(item.searchAliases) ? item.searchAliases : [];
+  const titleFields = uniqueValues([item.title, item.originalTitle, item.englishTitle, ...aliases, ...searchAliases]);
   const metadata = uniqueValues([item.year, mediaLabel(item.type), item.type, item.source, item.region, item.imdbId, item.tmdbId, item.wikidataId, item.tvmazeId]);
   return [
     ...titleFields.map((value) => ({ value, weight: 1 })),
@@ -912,7 +919,8 @@ function debounce(fn, wait = 350) {
 }
 
 function itemDisplayId(item) {
-  if (item.tmdbId) return `${item.type}-${item.tmdbId}`;
+  const tmdbId = numericTmdbId(item.tmdbId);
+  if (tmdbId) return `${item.type}-${tmdbId}`;
   if (item.imdbId) return `${item.type}-${item.imdbId}`;
   if (item.wikidataId) return `${item.type}-${item.wikidataId}`;
   if (item.tvmazeId) return `${item.type}-tvmaze-${item.tvmazeId}`;
@@ -921,8 +929,9 @@ function itemDisplayId(item) {
 
 function itemAliases(item) {
   const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+  const tmdbId = numericTmdbId(item.tmdbId);
   return [
-    item.tmdbId ? `${item.type}:tmdb:${item.tmdbId}` : "",
+    tmdbId ? `${item.type}:tmdb:${tmdbId}` : "",
     item.imdbId ? `${item.type}:imdb:${item.imdbId}` : "",
     item.wikidataId ? `${item.type}:wikidata:${item.wikidataId}` : "",
     item.tvmazeId ? `${item.type}:tvmaze:${item.tvmazeId}` : "",
@@ -949,6 +958,7 @@ function mergeItemData(existing, incoming) {
     existing.originalTitle,
     incoming.originalTitle,
   ]);
+  merged.searchAliases = uniqueValues([...(existing.searchAliases || []), ...(incoming.searchAliases || [])]);
   merged.rating = incoming.rating || existing.rating || null;
   merged.imdbRating = incoming.imdbRating || existing.imdbRating || null;
   merged.omdbRating = incoming.omdbRating || existing.omdbRating || null;
@@ -1796,6 +1806,22 @@ function toggleWatchlist(item) {
   render();
 }
 
+function remapStoredItemId(oldId, newId) {
+  if (!oldId || !newId || oldId === newId) return;
+  let changed = false;
+  state.profile.watchlist = state.profile.watchlist.map((id) => {
+    if (id !== oldId) return id;
+    changed = true;
+    return newId;
+  });
+  state.profile.continueWatching = state.profile.continueWatching.map((entry) => {
+    if (entry.id !== oldId) return entry;
+    changed = true;
+    return { ...entry, id: newId };
+  });
+  if (changed) saveProfile();
+}
+
 function rememberPlay(item, season = state.currentSeason, episode = state.currentEpisode) {
   updateContinueEntry(item, {
     season,
@@ -2086,6 +2112,86 @@ async function tmdbFetch(path, params = {}) {
   return response.json();
 }
 
+function titleSimilarityScore(left, right) {
+  const compact = normalizeCompact(right);
+  return fieldMatchScore(left, {
+    normalized: normalizeSearch(right),
+    compact,
+    tokens: tokenizeSearch(right),
+    grams: ngrams(compact, compact.length <= 4 ? 2 : 3),
+    sound: phoneticKey(right),
+  });
+}
+
+function proxyMatchDate(match, type) {
+  return type === "tv" ? match.first_air_date : match.release_date;
+}
+
+function normalizeProxyMatch(item, match) {
+  if (!match?.id) return item;
+  const isTv = item.type === "tv";
+  const title = isTv ? match.name || item.title : match.title || item.title;
+  const originalTitle = isTv ? match.original_name || title : match.original_title || title;
+  const date = proxyMatchDate(match, item.type);
+  return {
+    ...item,
+    id: `${item.type}-${match.id}`,
+    tmdbId: match.id,
+    title,
+    originalTitle,
+    aliases: uniqueValues([...(item.aliases || []), title, originalTitle]),
+    year: date ? String(date).slice(0, 4) : item.year,
+    posterUrl: imageUrl(match.poster_path, "w500") || item.posterUrl,
+    backdropUrl: imageUrl(match.backdrop_path || match.poster_path, "original") || item.backdropUrl,
+    overview: match.overview || item.overview,
+    rating: match.vote_average || item.rating,
+    source: item.source === "IMDb" ? "IMDb + TMDB" : item.source,
+  };
+}
+
+function pickProxyMatch(item, data) {
+  const results = item.type === "tv" ? data?.tv_results || [] : data?.movie_results || [];
+  if (!results.length) return null;
+  const itemYearValue = Number(item.year || 0);
+  return [...results].sort((a, b) => {
+    const titleA = item.type === "tv" ? a.name : a.title;
+    const titleB = item.type === "tv" ? b.name : b.title;
+    const scoreA = titleSimilarityScore(titleA || "", item.title || "");
+    const scoreB = titleSimilarityScore(titleB || "", item.title || "");
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    if (itemYearValue) {
+      const yearA = Number(String(proxyMatchDate(a, item.type) || "").slice(0, 4));
+      const yearB = Number(String(proxyMatchDate(b, item.type) || "").slice(0, 4));
+      return Math.abs(yearA - itemYearValue) - Math.abs(yearB - itemYearValue);
+    }
+    return Number(b.popularity || 0) - Number(a.popularity || 0);
+  })[0];
+}
+
+async function resolveImdbToTmdb(item) {
+  if (!item?.imdbId || providerId(item)) return item;
+  try {
+    const url = new URL(`${TMDB_PROXY}/find/${encodeURIComponent(item.imdbId)}`);
+    url.searchParams.set("external_source", "imdb_id");
+    const response = await fetch(url.toString());
+    if (!response.ok) return item;
+    const data = await response.json();
+    const match = pickProxyMatch(item, data);
+    return match ? normalizeProxyMatch(item, match) : item;
+  } catch (error) {
+    console.warn("IMDb to TMDB resolution failed", error);
+    return item;
+  }
+}
+
+async function resolveProviderIds(items) {
+  const queue = items.filter((item) => item?.imdbId && !providerId(item)).slice(0, 48);
+  if (!queue.length) return items;
+  const resolved = await Promise.all(queue.map(resolveImdbToTmdb));
+  const byOriginalId = new Map(queue.map((item, index) => [item.id, resolved[index]]));
+  return items.map((item) => byOriginalId.get(item.id) || item);
+}
+
 function normalizeTmdbItem(item, explicitType) {
   const type = explicitType || item.media_type;
   const isTv = type === "tv";
@@ -2126,7 +2232,7 @@ async function tmdbSearchPages(query) {
     .filter((item) => item.media_type === "movie" || item.media_type === "tv")
     .map((item, index) => {
       const normalized = normalizeTmdbItem(item);
-      return { ...normalized, aliases: uniqueValues([...(normalized.aliases || []), query]), searchRank: index };
+      return { ...normalized, searchAliases: uniqueValues([...(normalized.searchAliases || []), query]), searchRank: index };
     });
 }
 
@@ -2143,7 +2249,8 @@ function normalizeTvMazeResult(result) {
     imdbId,
     title: show.name,
     originalTitle: show.name,
-    aliases: uniqueValues([show.name, show.language, show.network?.name, show.webChannel?.name]),
+    aliases: uniqueValues([show.name]),
+    searchAliases: uniqueValues([show.language, show.network?.name, show.webChannel?.name]),
     year: show.premiered ? show.premiered.slice(0, 4) : "",
     genres: show.genres || [],
     rating: show.rating?.average || null,
@@ -2262,7 +2369,7 @@ async function wikidataSearch(query, property, type) {
   return ids
     .map((id, index) => normalizeWikidataEntity(entityData?.entities?.[id], type, index))
     .filter(Boolean)
-    .map((item) => ({ ...item, aliases: uniqueValues([...(item.aliases || []), query]) }));
+    .map((item) => ({ ...item, searchAliases: uniqueValues([...(item.searchAliases || []), query]) }));
 }
 
 async function searchWikidataMedia(query) {
@@ -2275,20 +2382,32 @@ async function searchWikidataMedia(query) {
   }
 }
 
+function imdbSuggestionType(qid) {
+  const value = String(qid || "").toLowerCase();
+  if (value === "tvseries" || value === "tvminiseries") return "tv";
+  return "movie";
+}
+
 function normalizeImdbSuggestion(item, index) {
   const qid = item.qid || "";
-  const type = qid.toLowerCase().includes("tv") ? "tv" : "movie";
+  const type = imdbSuggestionType(qid);
   const title = item.l || "";
-  const aliases = uniqueValues([title, item.s, item.q, item.rank ? String(item.rank) : ""]);
+  const cast = String(item.s || "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .slice(0, 5);
   return {
     id: `${type}-${item.id}`,
     type,
     imdbId: item.id,
     title,
     originalTitle: title,
-    aliases,
+    aliases: uniqueValues([title]),
+    searchAliases: uniqueValues([item.q, item.rank ? String(item.rank) : ""]),
     year: item.y ? String(item.y) : "",
     genres: [],
+    cast,
     rating: null,
     posterUrl: item.i?.imageUrl || "",
     backdropUrl: item.i?.imageUrl || "",
@@ -2308,7 +2427,7 @@ async function searchImdbSuggestions(query) {
       .slice(0, 24)
       .map((item, index) => {
         const normalized = normalizeImdbSuggestion(item, index);
-        return { ...normalized, aliases: uniqueValues([...(normalized.aliases || []), query]) };
+        return { ...normalized, searchAliases: uniqueValues([...(normalized.searchAliases || []), query]) };
       });
   } catch {
     return [];
@@ -2394,7 +2513,7 @@ async function searchRemote(query) {
           .then((data) =>
             data.map((result, index) => {
               const normalized = normalizeTvMazeResult(result);
-              return { ...normalized, aliases: uniqueValues([...(normalized.aliases || []), variant]), searchRank: index };
+              return { ...normalized, searchAliases: uniqueValues([...(normalized.searchAliases || []), variant]), searchRank: index };
             }),
           )
           .catch(() => []),
@@ -2405,7 +2524,10 @@ async function searchRemote(query) {
   const results = await Promise.all(requests.map(settleList));
   if (token !== state.searchToken) return;
 
-  state.items = sortSearchResults(mergeItems(SEED_TITLES.map(normalizeSeed), state.items, ...results, localMatches), query);
+  const resolvedResults = await resolveProviderIds(results.flat());
+  if (token !== state.searchToken) return;
+
+  state.items = sortSearchResults(mergeItems(SEED_TITLES.map(normalizeSeed), state.items, resolvedResults, localMatches), query);
   rememberSearchResults(state.items);
   state.isSearching = false;
   state.selected = displayItems()[0] || state.items[0] || null;
@@ -2419,14 +2541,33 @@ async function enrichSelected(item) {
   if (!item) return;
 
   const detailToken = ++state.detailToken;
-  const selectedId = item.id;
+  let selectedId = item.id;
   state.detailLoadingId = selectedId;
   if (state.selected?.id === selectedId) render();
 
+  if (!providerId(item) && item.imdbId) {
+    const resolved = await resolveImdbToTmdb(item);
+    if (detailToken !== state.detailToken) return;
+    if (resolved.id !== item.id || providerId(resolved)) {
+      const oldId = item.id;
+      item = resolved;
+      selectedId = resolved.id;
+      state.detailLoadingId = selectedId;
+      state.items = state.items.map((candidate) => (candidate.id === oldId ? resolved : candidate));
+      if (!state.items.some((candidate) => candidate.id === resolved.id)) state.items.push(resolved);
+      if (state.selected?.id === oldId) state.selected = resolved;
+      remapStoredItemId(oldId, resolved.id);
+      if (location.hash === `#/title/${encodeURIComponent(oldId)}`) {
+        history.replaceState(history.state || { page: "detail" }, "", `#/title/${encodeURIComponent(resolved.id)}`);
+      }
+      render();
+    }
+  }
+
   const updates = {};
-  if (state.profile.tmdbKey && item.tmdbId) {
+  if (state.profile.tmdbKey && providerId(item)) {
     try {
-      const path = item.type === "tv" ? `/tv/${item.tmdbId}` : `/movie/${item.tmdbId}`;
+      const path = item.type === "tv" ? `/tv/${providerId(item)}` : `/movie/${providerId(item)}`;
       const data = await tmdbFetch(path, { append_to_response: "credits,external_ids" });
       updates.overview = data.overview || item.overview;
       updates.rating = data.vote_average || item.rating;
