@@ -31,6 +31,9 @@ const DEFAULT_PROFILE = {
 
 const CATEGORY_VIEWS = new Set(["bollywood", "hollywood"]);
 const CATEGORY_PAGE_SIZE = 8;
+const SEARCH_DEBOUNCE_MS = 180;
+const SEARCH_CACHE_LIMIT = 260;
+const PLAYER_RECOVERY_COOLDOWN_MS = 12000;
 
 const IMDB_TO_TMDB = {
   tt0903747: 1396,
@@ -498,6 +501,23 @@ const SEED_TITLES = [
   },
   {
     type: "tv",
+    imdbId: "tt39334604",
+    title: "Delikanlı",
+    originalTitle: "Delikanlı",
+    englishTitle: "The Gentleman",
+    aliases: ["Delikanli", "Delikanlı", "The Gentleman", "Delikanl", "Delik"],
+    year: "2026",
+    genres: ["Drama", "Romance"],
+    rating: 5.8,
+    runtime: "140m",
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BYzA5NTIzYTMtMWI2OC00ZThmLWFjODYtNTMwOGQxOGQ1MjAxXkEyXkFqcGc@._V1_.jpg",
+    backdropUrl: "https://m.media-amazon.com/images/M/MV5BYzA5NTIzYTMtMWI2OC00ZThmLWFjODYtNTMwOGQxOGQ1MjAxXkEyXkFqcGc@._V1_.jpg",
+    seasons: [{ number: 1, episodes: 8 }],
+    overview:
+      "Yusuf tries to keep his family afloat in Istanbul, but old wounds, power games, and hidden secrets pull him into a dangerous new life.",
+  },
+  {
+    type: "tv",
     tmdbId: 87108,
     tvmazeId: 41803,
     imdbId: "tt7366338",
@@ -606,6 +626,12 @@ const state = {
   categorySort: "featured",
   categoryTab: "trending",
   categoryLimit: CATEGORY_PAGE_SIZE,
+  searchCache: new Map(),
+  activePlayerUrl: "",
+  playerLoadStartedAt: 0,
+  lastPlayerSignalAt: 0,
+  lastPlayerRecoveryAt: 0,
+  playerRecoveryCount: 0,
 };
 
 function loadProfile() {
@@ -630,6 +656,8 @@ function normalizeSeed(item) {
     ...item,
     posterUrl,
     backdropUrl,
+    originalTitle: item.originalTitle || item.title,
+    aliases: uniqueValues([item.title, item.originalTitle, ...(item.aliases || [])]),
     region: item.region || (item.type === "movie" ? "Hollywood" : "TV"),
     source: APP_NAME,
   };
@@ -657,6 +685,18 @@ function mediaLabel(type) {
   return type === "tv" ? "TV Show" : "Movie";
 }
 
+function providerId(item) {
+  return String(item?.tmdbId || item?.imdbId || "").trim();
+}
+
+function hasPlayableId(item) {
+  return Boolean(providerId(item));
+}
+
+function providerStatus(item) {
+  return hasPlayableId(item) ? "Vidking ready" : "Needs provider ID";
+}
+
 function safeText(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => {
     const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
@@ -664,10 +704,39 @@ function safeText(value) {
   });
 }
 
-function normalizeSearch(value) {
+const SEARCH_CHARACTER_MAP = {
+  ı: "i",
+  İ: "i",
+  ş: "s",
+  Ş: "s",
+  ğ: "g",
+  Ğ: "g",
+  ü: "u",
+  Ü: "u",
+  ö: "o",
+  Ö: "o",
+  ç: "c",
+  Ç: "c",
+  æ: "ae",
+  Æ: "ae",
+  ø: "o",
+  Ø: "o",
+  å: "a",
+  Å: "a",
+  ñ: "n",
+  Ñ: "n",
+  ß: "ss",
+};
+
+function transliterate(value) {
   return String(value || "")
+    .replace(/[ıİşŞğĞüÜöÖçÇæÆøØåÅñÑß]/g, (char) => SEARCH_CHARACTER_MAP[char] || char)
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeSearch(value) {
+  return transliterate(value)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -677,32 +746,153 @@ function normalizeCompact(value) {
   return normalizeSearch(value).replace(/\s+/g, "");
 }
 
+function tokenizeSearch(value) {
+  return normalizeSearch(value).split(" ").filter(Boolean);
+}
+
+function uniqueValues(values) {
+  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
 function searchForms(value) {
   const normalized = normalizeSearch(value);
   const compact = normalizeCompact(value);
-  return Array.from(new Set([normalized, compact].filter(Boolean)));
+  return uniqueValues([normalized, compact]);
+}
+
+function searchableFields(item) {
+  const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+  const titleFields = uniqueValues([item.title, item.originalTitle, item.englishTitle, ...aliases]);
+  const metadata = uniqueValues([item.year, mediaLabel(item.type), item.type, item.source, item.region, item.imdbId, item.tmdbId, item.wikidataId, item.tvmazeId]);
+  return [
+    ...titleFields.map((value) => ({ value, weight: 1 })),
+    ...(item.genres || []).map((value) => ({ value, weight: 0.78 })),
+    ...(item.cast || []).map((value) => ({ value, weight: 0.66 })),
+    ...metadata.map((value) => ({ value, weight: 0.5 })),
+    ...(item.overview ? [{ value: item.overview, weight: 0.34 }] : []),
+  ];
+}
+
+function ngrams(value, size = 2) {
+  const compact = normalizeCompact(value);
+  if (compact.length <= size) return compact ? [compact] : [];
+  const grams = [];
+  for (let index = 0; index <= compact.length - size; index += 1) {
+    grams.push(compact.slice(index, index + size));
+  }
+  return grams;
+}
+
+function levenshteinDistance(a, b, limit = 4) {
+  if (a === b) return 0;
+  if (!a || !b) return Math.max(a.length, b.length);
+  if (Math.abs(a.length - b.length) > limit) return limit + 1;
+
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    let rowMin = current[0];
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost);
+      current[j] = value;
+      rowMin = Math.min(rowMin, value);
+    }
+    if (rowMin > limit) return limit + 1;
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+function phoneticKey(value) {
+  const compact = normalizeCompact(value)
+    .replace(/ph/g, "f")
+    .replace(/[cq]/g, "k")
+    .replace(/[vw]/g, "v")
+    .replace(/[zs]/g, "s");
+  if (!compact) return "";
+  return `${compact[0]}${compact.slice(1).replace(/[aeiou]/g, "").replace(/(.)\1+/g, "$1")}`;
+}
+
+function fieldMatchScore(fieldValue, queryContext) {
+  const normalized = normalizeSearch(fieldValue);
+  const compact = normalizeCompact(fieldValue);
+  if (!normalized || !queryContext.normalized) return 0;
+
+  let score = 0;
+  if (normalized === queryContext.normalized || compact === queryContext.compact) score = Math.max(score, 180);
+  if (normalized.startsWith(queryContext.normalized)) score = Math.max(score, 130);
+  if (compact.startsWith(queryContext.compact)) score = Math.max(score, 124);
+  if (normalized.includes(queryContext.normalized)) score = Math.max(score, 94);
+  if (compact.includes(queryContext.compact)) score = Math.max(score, 88);
+
+  if (queryContext.tokens.length > 1) {
+    const tokenHits = queryContext.tokens.filter((token) => normalized.includes(token) || compact.includes(token));
+    if (tokenHits.length === queryContext.tokens.length) score = Math.max(score, 76);
+    else if (tokenHits.length) score = Math.max(score, 34 + tokenHits.length * 12);
+  }
+
+  if (queryContext.compact.length >= 3 && compact.length >= 3) {
+    const queryGrams = queryContext.grams;
+    const fieldGrams = new Set(ngrams(compact, queryContext.compact.length <= 4 ? 2 : 3));
+    const overlap = queryGrams.filter((gram) => fieldGrams.has(gram)).length;
+    if (queryGrams.length) score = Math.max(score, Math.round((overlap / queryGrams.length) * 66));
+  }
+
+  if (queryContext.compact.length >= 4 && compact.length >= 4) {
+    const windowLength = Math.min(compact.length, Math.max(queryContext.compact.length - 1, 3));
+    const candidates = [compact];
+    for (let index = 0; index <= compact.length - windowLength; index += 1) {
+      candidates.push(compact.slice(index, index + windowLength));
+    }
+    const distance = Math.min(...candidates.map((candidate) => levenshteinDistance(candidate, queryContext.compact, 3)));
+    if (distance <= 1) score = Math.max(score, 82);
+    else if (distance === 2) score = Math.max(score, 58);
+    else if (distance === 3 && queryContext.compact.length >= 7) score = Math.max(score, 42);
+  }
+
+  if (queryContext.sound && phoneticKey(compact).startsWith(queryContext.sound)) score = Math.max(score, 36);
+  return score;
+}
+
+function searchTextScore(item, query) {
+  const normalized = normalizeSearch(query);
+  const compact = normalizeCompact(query);
+  if (!normalized) return 1;
+  const queryContext = {
+    normalized,
+    compact,
+    tokens: tokenizeSearch(query),
+    grams: ngrams(compact, compact.length <= 4 ? 2 : 3),
+    sound: phoneticKey(query),
+  };
+  const best = searchableFields(item).reduce((maxScore, field) => {
+    const score = fieldMatchScore(field.value, queryContext) * field.weight;
+    return Math.max(maxScore, score);
+  }, 0);
+
+  const aliasParts = uniqueValues([item.title, item.originalTitle, ...(item.aliases || [])]).flatMap(tokenizeSearch);
+  const tokenPrefixBonus = aliasParts.some((part) => compact && part.startsWith(compact)) ? 20 : 0;
+  return best + tokenPrefixBonus;
 }
 
 function queryMatchesItem(item, query) {
-  const queryForms = searchForms(query);
-  if (!queryForms.length) return true;
-  const values = [item.title, item.year, item.type, item.source, item.region, item.imdbId, item.tmdbId, ...(item.genres || [])];
-  const haystacks = searchForms(values.join(" "));
-  return queryForms.some((form) => {
-    if (haystacks.some((haystack) => haystack.includes(form))) return true;
-    const tokens = normalizeSearch(form).split(" ").filter(Boolean);
-    return tokens.length > 1 && tokens.every((token) => haystacks.some((haystack) => haystack.includes(token)));
-  });
+  const compact = normalizeCompact(query);
+  if (!compact) return true;
+  const score = searchTextScore(item, query);
+  const threshold = compact.length <= 2 ? 32 : compact.length <= 4 ? 38 : compact.length <= 7 ? 42 : 36;
+  return score >= threshold;
 }
 
 function searchQueryVariants(query) {
   const normalized = normalizeSearch(query);
   const compact = normalizeCompact(query);
   const variants = [query.trim(), normalized, compact];
-  if (/^[a-z0-9]{2,8}$/i.test(compact)) {
-    variants.push(compact.split("").join("."));
-  }
-  return Array.from(new Set(variants.filter(Boolean)));
+  if (/^[a-z0-9]{2,10}$/i.test(compact)) variants.push(compact.split("").join("."));
+  if (compact.length >= 5) variants.push(compact.slice(0, -1));
+  if (compact.endsWith("l")) variants.push(`${compact}i`);
+  if (compact.includes("kgf")) variants.push(compact.replace(/kgf/g, "k.g.f"));
+  return uniqueValues(variants);
 }
 
 function usesPosterArtwork(item) {
@@ -728,24 +918,35 @@ function itemDisplayId(item) {
 }
 
 function itemAliases(item) {
+  const aliases = Array.isArray(item.aliases) ? item.aliases : [];
   return [
     item.tmdbId ? `${item.type}:tmdb:${item.tmdbId}` : "",
     item.imdbId ? `${item.type}:imdb:${item.imdbId}` : "",
     item.wikidataId ? `${item.type}:wikidata:${item.wikidataId}` : "",
     item.tvmazeId ? `${item.type}:tvmaze:${item.tvmazeId}` : "",
     item.title ? `${item.type}:title:${normalizeSearch(item.title)}:${item.year || ""}` : "",
+    item.originalTitle ? `${item.type}:original:${normalizeSearch(item.originalTitle)}:${item.year || ""}` : "",
+    ...aliases.map((alias) => `${item.type}:alias:${normalizeSearch(alias)}:${item.year || ""}`),
   ].filter(Boolean);
 }
 
 function mergeItemData(existing, incoming) {
   if (!existing) return { ...incoming, id: itemDisplayId(incoming) };
   const merged = { ...existing, ...incoming };
-  ["tmdbId", "posterUrl", "backdropUrl", "overview", "runtime", "imdbId", "wikidataId", "tvmazeId", "source"].forEach((key) => {
+  ["tmdbId", "posterUrl", "backdropUrl", "overview", "runtime", "imdbId", "wikidataId", "tvmazeId", "source", "originalTitle", "englishTitle"].forEach((key) => {
     merged[key] = incoming[key] || existing[key] || "";
   });
   ["genres", "cast", "seasons", "episodes"].forEach((key) => {
     merged[key] = incoming[key]?.length ? incoming[key] : existing[key] || [];
   });
+  merged.aliases = uniqueValues([
+    ...(existing.aliases || []),
+    ...(incoming.aliases || []),
+    existing.title,
+    incoming.title,
+    existing.originalTitle,
+    incoming.originalTitle,
+  ]);
   merged.rating = incoming.rating || existing.rating || null;
   merged.imdbRating = incoming.imdbRating || existing.imdbRating || null;
   merged.omdbRating = incoming.omdbRating || existing.omdbRating || null;
@@ -950,7 +1151,7 @@ function renderHero(item) {
   els.hero.style.setProperty("--hero-image", `url("${heroImage}")`);
   els.hero.classList.toggle("is-poster-art", usesPosterArtwork(item));
   const genres = (item.genres || []).slice(0, 3);
-  const canPlay = Boolean(item.tmdbId);
+  const canPlay = hasPlayableId(item);
   els.hero.innerHTML = `
     <div class="hero-inner">
       <p class="kicker">${safeText(mediaLabel(item.type))}</p>
@@ -1158,7 +1359,7 @@ function renderGrid(items) {
   els.posterGrid.innerHTML = items
     .map(
       (item) => {
-        const status = item.tmdbId ? "Vidking ready" : "Needs TMDB ID";
+        const status = providerStatus(item);
         const source = item.source || APP_NAME;
         const progress = playbackProgress(item);
         return `
@@ -1182,7 +1383,7 @@ function renderGrid(items) {
             <span>${safeText(mediaLabel(item.type))}</span>
             ${isSearch ? `<span>${safeText(source)}</span>` : ""}
           </span>
-          ${isSearch ? `<span class="result-status ${item.tmdbId ? "is-ready" : ""}">${safeText(status)}</span>` : ""}
+          ${isSearch ? `<span class="result-status ${hasPlayableId(item) ? "is-ready" : ""}">${safeText(status)}</span>` : ""}
           ${isSearch && item.overview ? `<span class="card-overview">${safeText(item.overview)}</span>` : ""}
           ${progress ? progressMarkup(progress, "card-progress") : ""}
         </span>
@@ -1288,7 +1489,7 @@ function renderDetail(item) {
   }
 
   const watchText = isWatchlisted(item) ? "Saved" : "Add to Watchlist";
-  const canPlay = Boolean(item.tmdbId);
+  const canPlay = hasPlayableId(item);
   const episodeModel = getEpisodeModel(item);
   const season = episodeModel.find((entry) => entry.number === state.currentSeason) || episodeModel[0];
   const selectedSeason = season?.number || 1;
@@ -1386,7 +1587,7 @@ function renderDetail(item) {
           </div>
         `
             : `
-          <p class="manual-help">Not available yet. This title needs a TMDB ID before playback can open.</p>
+          <p class="manual-help">Not available yet. This title needs a provider ID before playback can open.</p>
         `
         }
       </section>
@@ -1627,10 +1828,11 @@ function cleanHex(value, fallback = "d8b15f") {
 }
 
 function buildVidkingUrl(item, season = 1, episode = 1) {
+  const id = providerId(item);
   const base =
     item.type === "tv"
-      ? `${VIDKING_BASE}/tv/${encodeURIComponent(item.tmdbId)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}`
-      : `${VIDKING_BASE}/movie/${encodeURIComponent(item.tmdbId)}`;
+      ? `${VIDKING_BASE}/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}`
+      : `${VIDKING_BASE}/movie/${encodeURIComponent(id)}`;
 
   const params = new URLSearchParams();
   params.set("color", cleanHex(state.profile.playerColor));
@@ -1660,9 +1862,39 @@ function syncPlayerLabels(item, season = state.currentSeason, episode = state.cu
   if (episodeSelect) episodeSelect.value = String(episode);
 }
 
+function notePlayerSignal() {
+  state.lastPlayerSignalAt = Date.now();
+  state.playerRecoveryCount = 0;
+}
+
+function setPlayerSource(url) {
+  state.activePlayerUrl = url;
+  state.playerLoadStartedAt = Date.now();
+  state.lastPlayerSignalAt = Date.now();
+  state.playerRecoveryCount = 0;
+  els.playerFrame.src = url;
+}
+
+function attemptPlayerRecovery(reason = "player recovery") {
+  if (els.playerOverlay.hidden || !state.activePlayerUrl) return;
+  const now = Date.now();
+  if (now - state.lastPlayerRecoveryAt < PLAYER_RECOVERY_COOLDOWN_MS) return;
+  if (state.playerRecoveryCount >= 3) return;
+
+  state.lastPlayerRecoveryAt = now;
+  state.playerRecoveryCount += 1;
+  const recoveryUrl = new URL(state.activePlayerUrl);
+  recoveryUrl.searchParams.set("fdRecovery", String(now));
+  console.warn(`FlixDok ${reason}; reloading player frame`);
+  els.playerFrame.src = "about:blank";
+  window.setTimeout(() => {
+    if (!els.playerOverlay.hidden) els.playerFrame.src = recoveryUrl.toString();
+  }, 80);
+}
+
 function playItem(item, opts = {}) {
   if (!item) return;
-  if (!item.tmdbId) {
+  if (!hasPlayableId(item)) {
     openTitle(item);
     return;
   }
@@ -1675,7 +1907,7 @@ function playItem(item, opts = {}) {
 
   const url = buildVidkingUrl(item, season, episode);
   syncPlayerLabels(item, season, episode);
-  els.playerFrame.src = url;
+  setPlayerSource(url);
   els.playerOverlay.hidden = false;
   renderPlayerControls(item);
   rememberPlay(item, season, episode);
@@ -1725,6 +1957,8 @@ function closePlayer() {
   els.playerOverlay.hidden = true;
   els.playerFrame.src = "about:blank";
   state.activePlayerId = "";
+  state.activePlayerUrl = "";
+  state.playerRecoveryCount = 0;
   if (document.fullscreenElement) {
     document.exitFullscreen().catch?.(() => {});
   }
@@ -1736,7 +1970,7 @@ function parsePlayerMessage(data) {
     try {
       return JSON.parse(data);
     } catch {
-      return null;
+      return { event: data };
     }
   })() : data;
   if (!payload || typeof payload !== "object") return null;
@@ -1749,6 +1983,9 @@ function parsePlayerMessage(data) {
       continue;
     }
     if (!candidate || typeof candidate !== "object") continue;
+
+    const eventName = String(candidate.event ?? candidate.type ?? candidate.status ?? candidate.state ?? "").toLowerCase();
+    if (/(stalled|suspend|waiting|buffer|error|abort|retry|reconnect)/.test(eventName)) parsed.playerEvent = eventName;
 
     const season = Number(candidate.season ?? candidate.s ?? candidate.seasonNumber);
     const episode = Number(candidate.episode ?? candidate.e ?? candidate.episodeNumber);
@@ -1776,6 +2013,10 @@ function handlePlayerMessage(event) {
   const update = parsePlayerMessage(event.data);
   const activeItem = findItem(state.activePlayerId) || state.selected;
   if (!update || !activeItem) return;
+  notePlayerSignal();
+  if (/(stalled|suspend|error|abort|retry|reconnect)/.test(update.playerEvent || "")) {
+    attemptPlayerRecovery(update.playerEvent);
+  }
   if (activeItem.type === "tv" && update.season && update.episode) {
     state.currentSeason = update.season;
     state.currentEpisode = update.episode;
@@ -1844,6 +2085,8 @@ function normalizeTmdbItem(item, explicitType) {
     type: isTv ? "tv" : "movie",
     tmdbId: item.id,
     title: isTv ? item.name : item.title,
+    originalTitle: isTv ? item.original_name || item.name : item.original_title || item.title,
+    aliases: uniqueValues([isTv ? item.name : item.title, isTv ? item.original_name : item.original_title]),
     year: date ? date.slice(0, 4) : "",
     genres: [],
     rating: item.vote_average || null,
@@ -1871,7 +2114,10 @@ async function tmdbSearchPages(query) {
   return results
     .flatMap((data) => data.results || [])
     .filter((item) => item.media_type === "movie" || item.media_type === "tv")
-    .map((item, index) => ({ ...normalizeTmdbItem(item), searchRank: index }));
+    .map((item, index) => {
+      const normalized = normalizeTmdbItem(item);
+      return { ...normalized, aliases: uniqueValues([...(normalized.aliases || []), query]), searchRank: index };
+    });
 }
 
 function normalizeTvMazeResult(result) {
@@ -1886,6 +2132,8 @@ function normalizeTvMazeResult(result) {
     tvmazeId: show.id,
     imdbId,
     title: show.name,
+    originalTitle: show.name,
+    aliases: uniqueValues([show.name, show.language, show.network?.name, show.webChannel?.name]),
     year: show.premiered ? show.premiered.slice(0, 4) : "",
     genres: show.genres || [],
     rating: show.rating?.average || null,
@@ -1908,6 +2156,13 @@ function claimString(entity, property) {
   return typeof value === "string" ? value : "";
 }
 
+function claimText(entity, property) {
+  const value = claimValues(entity, property)[0];
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") return value.text || value.value || "";
+  return "";
+}
+
 function claimYear(entity, ...properties) {
   for (const property of properties) {
     const value = claimValues(entity, property)[0];
@@ -1923,6 +2178,22 @@ function wikimediaImageUrl(fileName, width = 500) {
   return `${WIKIMEDIA_FILE}${encodeURIComponent(fileName)}?width=${width}`;
 }
 
+function entityBestLabel(entity) {
+  const labels = entity?.labels || {};
+  const preferred = ["en", "tr", "hi", "es", "fr", "de", "it", "pt", "ar"];
+  for (const language of preferred) {
+    if (labels[language]?.value) return labels[language].value;
+  }
+  return Object.values(labels)[0]?.value || "";
+}
+
+function entityAliasValues(entity) {
+  return Object.values(entity?.aliases || {})
+    .flatMap((aliases) => aliases.map((alias) => alias.value))
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 function normalizeWikidataEntity(entity, preferredType, searchRank = 999) {
   if (!entity) return null;
   const movieId = claimString(entity, "P4947");
@@ -1930,6 +2201,9 @@ function normalizeWikidataEntity(entity, preferredType, searchRank = 999) {
   const type = preferredType || (movieId ? "movie" : "tv");
   const tmdbId = type === "movie" ? movieId : tvId;
   const image = claimString(entity, "P18");
+  const originalTitle = claimText(entity, "P1476");
+  const title = entityBestLabel(entity) || originalTitle;
+  const aliases = uniqueValues([title, originalTitle, ...entityAliasValues(entity)]);
 
   if (!tmdbId) return null;
 
@@ -1939,7 +2213,9 @@ function normalizeWikidataEntity(entity, preferredType, searchRank = 999) {
     tmdbId,
     wikidataId: entity.id,
     imdbId: claimString(entity, "P345"),
-    title: entity.labels?.en?.value || "",
+    title,
+    originalTitle,
+    aliases,
     year: claimYear(entity, "P577", "P580", "P571"),
     genres: [],
     rating: null,
@@ -1967,15 +2243,16 @@ async function wikidataSearch(query, property, type) {
   const entityUrl = new URL(WIKIDATA_API);
   entityUrl.searchParams.set("action", "wbgetentities");
   entityUrl.searchParams.set("ids", ids.join("|"));
-  entityUrl.searchParams.set("props", "claims|labels|descriptions");
-  entityUrl.searchParams.set("languages", "en");
+  entityUrl.searchParams.set("props", "claims|labels|descriptions|aliases");
+  entityUrl.searchParams.set("languages", "en|tr|hi|es|fr|de|it|pt|ar");
   entityUrl.searchParams.set("format", "json");
   entityUrl.searchParams.set("origin", "*");
 
   const entityData = await fetch(entityUrl.toString()).then((response) => (response.ok ? response.json() : null));
   return ids
     .map((id, index) => normalizeWikidataEntity(entityData?.entities?.[id], type, index))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((item) => ({ ...item, aliases: uniqueValues([...(item.aliases || []), query]) }));
 }
 
 async function searchWikidataMedia(query) {
@@ -1991,11 +2268,15 @@ async function searchWikidataMedia(query) {
 function normalizeImdbSuggestion(item, index) {
   const qid = item.qid || "";
   const type = qid.toLowerCase().includes("tv") ? "tv" : "movie";
+  const title = item.l || "";
+  const aliases = uniqueValues([title, item.s, item.q, item.rank ? String(item.rank) : ""]);
   return {
     id: `${type}-${item.id}`,
     type,
     imdbId: item.id,
-    title: item.l,
+    title,
+    originalTitle: title,
+    aliases,
     year: item.y ? String(item.y) : "",
     genres: [],
     rating: null,
@@ -2015,26 +2296,19 @@ async function searchImdbSuggestions(query) {
     return (data.d || [])
       .filter((item) => item.id && item.l && ["movie", "tvMovie", "tvSeries", "tvMiniSeries"].includes(item.qid))
       .slice(0, 24)
-      .map(normalizeImdbSuggestion);
+      .map((item, index) => {
+        const normalized = normalizeImdbSuggestion(item, index);
+        return { ...normalized, aliases: uniqueValues([...(normalized.aliases || []), query]) };
+      });
   } catch {
     return [];
   }
 }
 
 function searchResultScore(item, query) {
-  const title = normalizeSearch(item.title);
-  const compactTitle = normalizeCompact(item.title);
-  const normalizedQuery = normalizeSearch(query);
-  const compactQuery = normalizeCompact(query);
-  const queryTokens = normalizedQuery.split(" ").filter(Boolean);
-  let score = 0;
+  let score = searchTextScore(item, query) * 2;
 
-  if (title === normalizedQuery || compactTitle === compactQuery) score += 140;
-  else if (title.startsWith(normalizedQuery) || compactTitle.startsWith(compactQuery)) score += 80;
-  else if (title.includes(normalizedQuery) || compactTitle.includes(compactQuery)) score += 52;
-  else if (queryTokens.every((token) => title.includes(token) || compactTitle.includes(token))) score += 42;
-
-  if (item.tmdbId) score += 26;
+  if (hasPlayableId(item)) score += 26;
   if (item.type === "movie") score += 6;
   if (item.posterUrl) score += 12;
   if (item.overview) score += 6;
@@ -2059,9 +2333,41 @@ function stripTags(html) {
   return div.textContent || div.innerText || "";
 }
 
+function rememberSearchResults(items) {
+  items.forEach((item) => {
+    if (!item?.id) return;
+    state.searchCache.set(item.id, item);
+  });
+  if (state.searchCache.size > SEARCH_CACHE_LIMIT) {
+    Array.from(state.searchCache.keys())
+      .slice(0, state.searchCache.size - SEARCH_CACHE_LIMIT)
+      .forEach((key) => state.searchCache.delete(key));
+  }
+}
+
+function cachedSearchItems(query) {
+  return mergeItems(SEED_TITLES.map(normalizeSeed), state.items, Array.from(state.searchCache.values())).filter((item) => queryMatchesItem(item, query));
+}
+
+function showInstantSearchResults(query) {
+  const instant = sortSearchResults(cachedSearchItems(query), query);
+  if (!instant.length) return;
+  state.items = instant;
+  state.selected = displayItems()[0] || state.items[0] || null;
+}
+
+async function settleList(promise) {
+  try {
+    return await promise;
+  } catch {
+    return [];
+  }
+}
+
 async function searchRemote(query) {
   const token = ++state.searchToken;
   state.isSearching = true;
+  showInstantSearchResults(query);
   render();
 
   const localMatches = SEED_TITLES.map(normalizeSeed).filter((item) => queryMatchesItem(item, query));
@@ -2075,16 +2381,22 @@ async function searchRemote(query) {
       variants.map((variant) =>
         fetch(`${TVMAZE_API}/search/shows?q=${encodeURIComponent(variant)}`)
           .then((response) => (response.ok ? response.json() : []))
-          .then((data) => data.map(normalizeTvMazeResult))
+          .then((data) =>
+            data.map((result, index) => {
+              const normalized = normalizeTvMazeResult(result);
+              return { ...normalized, aliases: uniqueValues([...(normalized.aliases || []), variant]), searchRank: index };
+            }),
+          )
           .catch(() => []),
       ),
     ).then((lists) => lists.flat()),
   ];
 
-  const results = await Promise.all(requests);
+  const results = await Promise.all(requests.map(settleList));
   if (token !== state.searchToken) return;
 
-  state.items = sortSearchResults(mergeItems(SEED_TITLES.map(normalizeSeed), ...results, localMatches), query);
+  state.items = sortSearchResults(mergeItems(SEED_TITLES.map(normalizeSeed), state.items, ...results, localMatches), query);
+  rememberSearchResults(state.items);
   state.isSearching = false;
   state.selected = displayItems()[0] || state.items[0] || null;
   scrollToTop();
@@ -2291,6 +2603,10 @@ function restoreRouteFromHash() {
 }
 
 function applySection(view, filter = view === "home" ? "all" : view) {
+  const wasSearching = Boolean(state.query) || state.isSearching;
+  cancelActiveSearch();
+  clearQueryValue();
+  if (wasSearching) state.items = SEED_TITLES.map(normalizeSeed);
   state.page = "home";
   state.view = view;
   state.filter = filter;
@@ -2301,16 +2617,17 @@ function applySection(view, filter = view === "home" ? "all" : view) {
   scrollToTop();
   render();
   enrichSelected(state.selected);
+  if (wasSearching) hydrateHome();
   if (location.hash) history.pushState({ page: "home" }, "", location.pathname);
 }
 
 function openCategoryPage(category, push = true) {
   if (!CATEGORY_VIEWS.has(category)) return;
+  cancelActiveSearch();
   state.page = "home";
   state.view = category;
   state.filter = "movie";
-  state.query = "";
-  els.searchInput.value = "";
+  clearQueryValue();
   resetCategoryState();
   state.selected = displayItems()[0] || state.items[0] || null;
   setActiveNav();
@@ -2329,9 +2646,19 @@ function resetCategoryState() {
   state.categoryLimit = CATEGORY_PAGE_SIZE;
 }
 
-function clearSearchState() {
-  els.searchInput.value = "";
+function cancelActiveSearch() {
+  state.searchToken += 1;
+  state.isSearching = false;
+}
+
+function clearQueryValue() {
   state.query = "";
+  els.searchInput.value = "";
+}
+
+function clearSearchState() {
+  cancelActiveSearch();
+  clearQueryValue();
   state.page = "home";
   scrollToTop();
   hydrateHome();
@@ -2434,6 +2761,28 @@ function saveSettings() {
   };
   saveProfile();
   hydrateHome();
+}
+
+function installPopupGuard() {
+  const nativeOpen = window.open.bind(window);
+  window.open = (url, target, features) => {
+    if (!els.playerOverlay.hidden) {
+      console.warn("Blocked third-party popup while player is open", url);
+      return null;
+    }
+    return nativeOpen(url, target, features);
+  };
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (els.playerOverlay.hidden) return;
+      const link = event.target.closest?.("a[target='_blank'], a[rel~='external']");
+      if (!link) return;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    true,
+  );
 }
 
 document.addEventListener("click", (event) => {
@@ -2541,17 +2890,26 @@ document.querySelectorAll(".segmented button").forEach((button) => {
 els.searchInput.addEventListener(
   "input",
   debounce(() => {
+    cancelActiveSearch();
     state.query = els.searchInput.value.trim();
     state.page = "home";
-    if (state.query.length >= 2) searchRemote(state.query);
-    else {
+    state.view = "home";
+    state.filter = "all";
+    resetCategoryState();
+    if (state.query) {
+      showInstantSearchResults(state.query);
+      state.selected = displayItems()[0] || state.items[0] || null;
+      scrollToTop();
+      render();
+      if (state.query.length >= 2) searchRemote(state.query);
+    } else {
       state.items = SEED_TITLES.map(normalizeSeed);
       state.selected = displayItems()[0] || state.items[0] || null;
       scrollToTop();
       render();
-      if (!state.query) hydrateHome();
+      hydrateHome();
     }
-  }, 320),
+  }, SEARCH_DEBOUNCE_MS),
 );
 
 els.clearSearch.addEventListener("click", () => {
@@ -2677,7 +3035,18 @@ document.addEventListener(
 );
 
 els.closePlayer.addEventListener("click", closePlayer);
+els.playerFrame.addEventListener("load", notePlayerSignal);
+els.playerFrame.addEventListener("error", () => attemptPlayerRecovery("frame error"));
 window.addEventListener("message", handlePlayerMessage);
+window.addEventListener("online", () => attemptPlayerRecovery("network restored"));
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) attemptPlayerRecovery("page restored");
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && Date.now() - state.lastPlayerSignalAt > 8000) {
+    attemptPlayerRecovery("tab resumed");
+  }
+});
 window.addEventListener("popstate", () => {
   if (!restoreRouteFromHash()) {
     state.page = "home";
@@ -2781,6 +3150,7 @@ window.addEventListener("error", (event) => {
 
 setActiveNav();
 setActiveFilter();
+installPopupGuard();
 state.selected = state.items[0];
 scrollToTop("auto");
 if (!restoreRouteFromHash()) render();
