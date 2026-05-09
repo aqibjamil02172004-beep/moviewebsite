@@ -34,6 +34,8 @@ const CATEGORY_PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 180;
 const SEARCH_CACHE_LIMIT = 260;
 const PLAYER_RECOVERY_COOLDOWN_MS = 12000;
+const DRAG_START_THRESHOLD = 10;
+const DRAG_CLICK_CANCEL_THRESHOLD = 18;
 
 const IMDB_TO_TMDB = {
   tt0903747: 1396,
@@ -1772,7 +1774,13 @@ function getEpisodeModel(item) {
 }
 
 function findItem(id) {
-  return state.items.find((item) => item.id === id);
+  if (!id) return null;
+  return (
+    state.items.find((item) => item.id === id) ||
+    state.searchCache.get(id) ||
+    SEED_TITLES.map(normalizeSeed).find((item) => item.id === id) ||
+    null
+  );
 }
 
 function isWatchlisted(item) {
@@ -2983,6 +2991,7 @@ document.addEventListener("pointerdown", (event) => {
     pointerId: event.pointerId,
     startX: event.clientX,
     scrollLeft: track.scrollLeft,
+    distance: 0,
     moved: false,
   };
   track.classList.add("is-pressed");
@@ -2992,7 +3001,9 @@ document.addEventListener("pointerdown", (event) => {
 document.addEventListener("pointermove", (event) => {
   if (!dragScroll) return;
   const delta = event.clientX - dragScroll.startX;
-  if (Math.abs(delta) > 5) {
+  const distance = Math.abs(delta);
+  dragScroll.distance = Math.max(dragScroll.distance, distance);
+  if (distance > DRAG_START_THRESHOLD) {
     dragScroll.moved = true;
     dragScroll.track.classList.add("is-dragging");
     event.preventDefault();
@@ -3002,7 +3013,7 @@ document.addEventListener("pointermove", (event) => {
 
 function finishDragScroll(event) {
   if (!dragScroll) return;
-  const { track, pointerId, moved } = dragScroll;
+  const { track, pointerId, moved, distance } = dragScroll;
   if (!event || event.pointerId === pointerId) {
     try {
       track.releasePointerCapture?.(pointerId);
@@ -3011,7 +3022,7 @@ function finishDragScroll(event) {
     }
     track.classList.remove("is-pressed");
     track.classList.remove("is-dragging");
-    if (moved) {
+    if (moved && distance > DRAG_CLICK_CANCEL_THRESHOLD) {
       track.dataset.dragged = "true";
       window.setTimeout(() => {
         delete track.dataset.dragged;
