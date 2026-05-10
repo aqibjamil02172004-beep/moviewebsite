@@ -702,7 +702,9 @@ function hasPlayableId(item) {
 }
 
 function providerStatus(item) {
-  return hasPlayableId(item) ? "Vidking ready" : "Needs provider ID";
+  if (hasPlayableId(item)) return "Vidking ready";
+  if (item?.imdbId) return "Checking provider";
+  return "Not available";
 }
 
 function safeText(value) {
@@ -771,10 +773,11 @@ function searchForms(value) {
 function searchableFields(item) {
   const aliases = Array.isArray(item.aliases) ? item.aliases : [];
   const searchAliases = Array.isArray(item.searchAliases) ? item.searchAliases : [];
-  const titleFields = uniqueValues([item.title, item.originalTitle, item.englishTitle, ...aliases, ...searchAliases]);
+  const titleFields = uniqueValues([item.title, item.originalTitle, item.englishTitle, ...aliases]);
   const metadata = uniqueValues([item.year, mediaLabel(item.type), item.type, item.source, item.region, item.imdbId, item.tmdbId, item.wikidataId, item.tvmazeId]);
   return [
     ...titleFields.map((value) => ({ value, weight: 1 })),
+    ...searchAliases.map((value) => ({ value, weight: 0.16 })),
     ...(item.genres || []).map((value) => ({ value, weight: 0.78 })),
     ...(item.cast || []).map((value) => ({ value, weight: 0.66 })),
     ...metadata.map((value) => ({ value, weight: 0.5 })),
@@ -864,17 +867,58 @@ function fieldMatchScore(fieldValue, queryContext) {
   return score;
 }
 
-function searchTextScore(item, query) {
+function buildQueryContext(query) {
   const normalized = normalizeSearch(query);
   const compact = normalizeCompact(query);
-  if (!normalized) return 1;
-  const queryContext = {
+  return {
     normalized,
     compact,
     tokens: tokenizeSearch(query),
     grams: ngrams(compact, compact.length <= 4 ? 2 : 3),
     sound: phoneticKey(query),
   };
+}
+
+function realTitleFields(item) {
+  const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+  return uniqueValues([item.title, item.originalTitle, item.englishTitle, ...aliases]);
+}
+
+function wholeTitleMatchScore(fieldValue, queryContext) {
+  const normalized = normalizeSearch(fieldValue);
+  const compact = normalizeCompact(fieldValue);
+  if (!normalized || !queryContext.normalized) return 0;
+
+  if (normalized === queryContext.normalized || compact === queryContext.compact) return 230;
+  if (normalized.startsWith(queryContext.normalized) || compact.startsWith(queryContext.compact)) return queryContext.compact.length <= 3 ? 180 : 170;
+
+  const extraLength = Math.abs(compact.length - queryContext.compact.length);
+  const fullDistance = levenshteinDistance(compact, queryContext.compact, 4);
+  if (fullDistance <= 1 && extraLength <= 2) return 175;
+  if (fullDistance <= 2 && extraLength <= 3) return 156;
+  if (fullDistance <= 3 && extraLength <= 4 && queryContext.compact.length >= 7) return 126;
+
+  if (compact.includes(queryContext.compact)) {
+    const trailingLength = compact.length - queryContext.compact.length;
+    return trailingLength <= 4 ? 146 : 92;
+  }
+
+  return 0;
+}
+
+function realTitleScore(item, query) {
+  const queryContext = buildQueryContext(query);
+  if (!queryContext.normalized) return 1;
+  return realTitleFields(item).reduce(
+    (maxScore, value) => Math.max(maxScore, fieldMatchScore(value, queryContext), wholeTitleMatchScore(value, queryContext)),
+    0,
+  );
+}
+
+function searchTextScore(item, query) {
+  const compact = normalizeCompact(query);
+  const queryContext = buildQueryContext(query);
+  if (!queryContext.normalized) return 1;
   const best = searchableFields(item).reduce((maxScore, field) => {
     const score = fieldMatchScore(field.value, queryContext) * field.weight;
     return Math.max(maxScore, score);
@@ -1513,6 +1557,7 @@ function renderDetail(item) {
 
   const watchText = isWatchlisted(item) ? "Saved" : "Add to Watchlist";
   const canPlay = hasPlayableId(item);
+  const isResolvingProvider = !canPlay && Boolean(item.imdbId) && state.detailLoadingId === item.id;
   const episodeModel = getEpisodeModel(item);
   const season = episodeModel.find((entry) => entry.number === state.currentSeason) || episodeModel[0];
   const selectedSeason = season?.number || 1;
@@ -1554,7 +1599,7 @@ function renderDetail(item) {
         <div class="hero-actions">
           <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canPlay ? "" : "disabled"}>
             <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-            ${canPlay ? "Play" : "Not Available"}
+            ${canPlay ? "Play" : isResolvingProvider ? "Checking..." : "Not Available"}
           </button>
           <button class="secondary-button" type="button" data-action="toggle-watchlist" data-id="${safeText(item.id)}">
             <svg viewBox="0 0 24 24"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-3.5L6 21z"/></svg>
@@ -2113,14 +2158,7 @@ async function tmdbFetch(path, params = {}) {
 }
 
 function titleSimilarityScore(left, right) {
-  const compact = normalizeCompact(right);
-  return fieldMatchScore(left, {
-    normalized: normalizeSearch(right),
-    compact,
-    tokens: tokenizeSearch(right),
-    grams: ngrams(compact, compact.length <= 4 ? 2 : 3),
-    sound: phoneticKey(right),
-  });
+  return fieldMatchScore(left, buildQueryContext(right));
 }
 
 function proxyMatchDate(match, type) {
@@ -2435,14 +2473,25 @@ async function searchImdbSuggestions(query) {
 }
 
 function searchResultScore(item, query) {
-  let score = searchTextScore(item, query) * 2;
+  const textScore = searchTextScore(item, query);
+  const titleScore = realTitleScore(item, query);
+  const queryLength = normalizeCompact(query).length;
+  let score = textScore * 1.5 + titleScore * 3.5;
 
-  if (hasPlayableId(item)) score += 26;
+  if (titleScore >= 170) score += 260;
+  else if (titleScore >= 120) score += 180;
+  else if (titleScore >= 90) score += 115;
+  else if (titleScore >= 58) score += 54;
+  else if (queryLength >= 5) score -= 110;
+
+  if (hasPlayableId(item)) score += 34;
+  else if (item.imdbId) score += 10;
   if (item.type === "movie") score += 6;
   if (item.posterUrl) score += 12;
   if (item.overview) score += 6;
   if (item.rating || item.imdbRating) score += 6;
   if (item.source === "TMDB") score += 12;
+  if (item.source === "IMDb + TMDB") score += 14;
   if (item.source === APP_NAME) score += 10;
   score += Math.max(0, 24 - (item.searchRank || 0));
   return score;
