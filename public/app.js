@@ -620,6 +620,7 @@ const state = {
   activePlayerId: "",
   searchToken: 0,
   detailToken: 0,
+  routeToken: 0,
   detailLoadingId: "",
   heroIndex: 0,
   heroItemId: "",
@@ -2189,6 +2190,59 @@ function normalizeProxyMatch(item, match) {
   };
 }
 
+function normalizeProxyDetail(data, type) {
+  if (!data?.id) return null;
+  const isTv = type === "tv";
+  const title = isTv ? data.name || data.original_name : data.title || data.original_title;
+  const originalTitle = isTv ? data.original_name || title : data.original_title || title;
+  const date = isTv ? data.first_air_date : data.release_date;
+  const runtime = isTv
+    ? data.episode_run_time?.[0]
+      ? `${data.episode_run_time[0]}m`
+      : ""
+    : data.runtime
+      ? `${Math.floor(data.runtime / 60)}h ${data.runtime % 60}m`
+      : "";
+
+  return {
+    id: `${type}-${data.id}`,
+    type,
+    tmdbId: data.id,
+    imdbId: isTv ? data.external_ids?.imdb_id || "" : data.imdb_id || "",
+    title,
+    originalTitle,
+    aliases: uniqueValues([title, originalTitle]),
+    year: date ? String(date).slice(0, 4) : "",
+    genres: (data.genres || []).map((genre) => genre.name).filter(Boolean),
+    rating: data.vote_average || null,
+    runtime,
+    posterUrl: imageUrl(data.poster_path, "w500"),
+    backdropUrl: imageUrl(data.backdrop_path || data.poster_path, "original"),
+    overview: data.overview || "",
+    seasons: isTv
+      ? (data.seasons || [])
+          .filter((season) => season.season_number > 0)
+          .map((season) => ({ number: season.season_number, episodes: season.episode_count }))
+      : [],
+    source: "TMDB",
+    region: data.origin_country?.includes("IN") ? "Bollywood" : isTv ? "TV" : "Hollywood",
+    providerChecked: true,
+  };
+}
+
+async function fetchProxyDetail(type, tmdbId) {
+  const id = numericTmdbId(tmdbId);
+  if (!id) return null;
+  try {
+    const response = await fetch(`${TMDB_PROXY}/${type}/${encodeURIComponent(id)}`);
+    if (!response.ok) return null;
+    return normalizeProxyDetail(await response.json(), type);
+  } catch (error) {
+    console.warn("Provider detail lookup failed", error);
+    return null;
+  }
+}
+
 function pickProxyMatch(item, data) {
   const results = item.type === "tv" ? data?.tv_results || [] : data?.movie_results || [];
   if (!results.length) return null;
@@ -2789,6 +2843,94 @@ function closeTitle(push = true) {
   }
 }
 
+function routePlaceholder(id) {
+  const value = String(id || "");
+  const numericMatch = value.match(/^(movie|tv)-(\d+)$/);
+  const imdbMatch = value.match(/^(movie|tv)-(tt\d+)$/i);
+  const type = numericMatch?.[1] || imdbMatch?.[1] || "movie";
+  const tmdbId = numericMatch?.[2] || "";
+  const imdbId = imdbMatch?.[2] || "";
+  return {
+    id: value,
+    type,
+    tmdbId,
+    imdbId,
+    title: "Loading title...",
+    originalTitle: "Loading title...",
+    aliases: [],
+    year: "",
+    genres: [],
+    rating: null,
+    runtime: "",
+    posterUrl: "",
+    backdropUrl: "",
+    overview: "Checking this title against the provider catalog.",
+    source: APP_NAME,
+    providerChecked: false,
+  };
+}
+
+async function resolveRouteItem(id, ignoreExisting = false) {
+  if (!ignoreExisting) {
+    const existing = findItem(id);
+    if (existing) return existing;
+  }
+
+  const value = String(id || "");
+  const numericMatch = value.match(/^(movie|tv)-(\d+)$/);
+  if (numericMatch) return fetchProxyDetail(numericMatch[1], numericMatch[2]);
+
+  const imdbMatch = value.match(/^(movie|tv)-(tt\d+)$/i);
+  if (imdbMatch) {
+    const resolved = await resolveImdbToTmdb({
+      id: value,
+      type: imdbMatch[1],
+      imdbId: imdbMatch[2],
+      title: "",
+      originalTitle: "",
+      aliases: [],
+    });
+    if (!providerId(resolved)) return resolved.title ? resolved : null;
+    return (await fetchProxyDetail(resolved.type, providerId(resolved))) || resolved;
+  }
+
+  return null;
+}
+
+async function openHashTitle(id) {
+  const token = ++state.routeToken;
+  const placeholder = routePlaceholder(id);
+  state.page = "detail";
+  state.selected = placeholder;
+  state.detailLoadingId = placeholder.id;
+  scrollToTop("auto");
+  render();
+
+  const resolved = await resolveRouteItem(id, true);
+  if (token !== state.routeToken) return;
+  state.detailLoadingId = "";
+
+  if (!resolved) {
+    state.selected = {
+      ...placeholder,
+      title: "Title not found",
+      overview: "This title could not be matched with the provider catalog.",
+      providerChecked: true,
+    };
+    render();
+    return;
+  }
+
+  state.items = mergeItems(state.items, [resolved]);
+  state.selected = findItem(resolved.id) || resolved;
+  remapStoredItemId(id, resolved.id);
+  if (location.hash === `#/title/${encodeURIComponent(id)}`) {
+    history.replaceState(history.state || { page: "detail" }, "", `#/title/${encodeURIComponent(resolved.id)}`);
+  }
+  render();
+  enrichSelected(state.selected);
+}
+
 function restoreRouteFromHash() {
   const categoryMatch = location.hash.match(/^#\/category\/(bollywood|hollywood)$/);
   if (categoryMatch) {
@@ -2798,9 +2940,10 @@ function restoreRouteFromHash() {
 
   const match = location.hash.match(/^#\/title\/(.+)$/);
   if (!match) return false;
-  const item = findItem(decodeURIComponent(match[1]));
-  if (!item) return false;
-  openTitle(item, false);
+  const id = decodeURIComponent(match[1]);
+  const item = findItem(id);
+  if (item) openTitle(item, false);
+  else openHashTitle(id);
   return true;
 }
 
