@@ -703,7 +703,7 @@ function hasPlayableId(item) {
 
 function providerStatus(item) {
   if (hasPlayableId(item)) return "Vidking ready";
-  if (item?.imdbId) return "Checking provider";
+  if (item?.imdbId && !item.providerChecked) return "Checking availability";
   return "Not available";
 }
 
@@ -1426,6 +1426,7 @@ function renderGrid(items) {
     .map(
       (item) => {
         const status = providerStatus(item);
+        const statusClass = hasPlayableId(item) ? "is-ready" : item.imdbId && !item.providerChecked ? "is-pending" : "is-unavailable";
         const source = item.source || APP_NAME;
         const progress = playbackProgress(item);
         const href = `#/title/${encodeURIComponent(item.id)}`;
@@ -1450,7 +1451,7 @@ function renderGrid(items) {
             <span>${safeText(mediaLabel(item.type))}</span>
             ${isSearch ? `<span>${safeText(source)}</span>` : ""}
           </span>
-          ${isSearch ? `<span class="result-status ${hasPlayableId(item) ? "is-ready" : ""}">${safeText(status)}</span>` : ""}
+          ${isSearch ? `<span class="result-status ${statusClass}">${safeText(status)}</span>` : ""}
           ${isSearch && item.overview ? `<span class="card-overview">${safeText(item.overview)}</span>` : ""}
           ${progress ? progressMarkup(progress, "card-progress") : ""}
         </span>
@@ -2184,6 +2185,7 @@ function normalizeProxyMatch(item, match) {
     overview: match.overview || item.overview,
     rating: match.vote_average || item.rating,
     source: item.source === "IMDb" ? "IMDb + TMDB" : item.source,
+    providerChecked: true,
   };
 }
 
@@ -2215,10 +2217,10 @@ async function resolveImdbToTmdb(item) {
     if (!response.ok) return item;
     const data = await response.json();
     const match = pickProxyMatch(item, data);
-    return match ? normalizeProxyMatch(item, match) : item;
+    return match ? normalizeProxyMatch(item, match) : { ...item, providerChecked: true };
   } catch (error) {
     console.warn("IMDb to TMDB resolution failed", error);
-    return item;
+    return { ...item, providerChecked: true, providerError: true };
   }
 }
 

@@ -1167,18 +1167,30 @@ svg {
 .result-status {
   justify-self: start;
   padding: 5px 8px;
-  border: 1px solid rgba(232, 79, 75, 0.36);
+  border: 1px solid rgba(232, 79, 75, 0.28);
   border-radius: 999px;
-  color: #f3aba8;
-  background: rgba(232, 79, 75, 0.11);
+  color: rgba(247, 247, 242, 0.68);
+  background: rgba(247, 247, 242, 0.07);
   font-size: 0.72rem;
   font-weight: 900;
+}
+
+.result-status.is-pending {
+  border-color: rgba(216, 177, 95, 0.34);
+  color: #ead18b;
+  background: rgba(216, 177, 95, 0.1);
 }
 
 .result-status.is-ready {
   border-color: rgba(49, 198, 169, 0.36);
   color: #93e6d8;
   background: rgba(49, 198, 169, 0.11);
+}
+
+.result-status.is-unavailable {
+  border-color: rgba(247, 247, 242, 0.15);
+  color: rgba(247, 247, 242, 0.58);
+  background: rgba(247, 247, 242, 0.06);
 }
 
 .card-overview {
