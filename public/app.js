@@ -1218,6 +1218,7 @@ function renderHero(item) {
   els.hero.classList.toggle("is-poster-art", usesPosterArtwork(item));
   const genres = (item.genres || []).slice(0, 3);
   const canPlay = hasPlayableId(item);
+  const canAttemptPlay = canPlay || (!item.providerChecked && Boolean(item.imdbId || item.title));
   els.hero.innerHTML = `
     <div class="hero-inner">
       <p class="kicker">${safeText(mediaLabel(item.type))}</p>
@@ -1230,9 +1231,9 @@ function renderHero(item) {
         ${genres.map((genre) => `<span class="pill">${safeText(genre)}</span>`).join("")}
       </div>
       <div class="hero-actions">
-        <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canPlay ? "" : "disabled"}>
+        <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canAttemptPlay ? "" : "disabled"}>
           <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          ${canPlay ? "Play" : "Not Available"}
+          ${canAttemptPlay ? "Play" : "Not Available"}
         </button>
         <button class="secondary-button" type="button" data-action="open-title" data-id="${safeText(item.id)}">
           <svg viewBox="0 0 24 24"><path d="M12 5h.01M12 9v10"/></svg>
@@ -1559,6 +1560,7 @@ function renderDetail(item) {
 
   const watchText = isWatchlisted(item) ? "Saved" : "Add to Watchlist";
   const canPlay = hasPlayableId(item);
+  const canAttemptPlay = canPlay || (!item.providerChecked && Boolean(item.imdbId || item.title));
   const isResolvingProvider = !canPlay && Boolean(item.imdbId) && state.detailLoadingId === item.id;
   const episodeModel = getEpisodeModel(item);
   const season = episodeModel.find((entry) => entry.number === state.currentSeason) || episodeModel[0];
@@ -1599,9 +1601,9 @@ function renderDetail(item) {
         </div>
         <p class="overview">${safeText(item.overview || "No overview is available yet.")}</p>
         <div class="hero-actions">
-          <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canPlay ? "" : "disabled"}>
+          <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canAttemptPlay ? "" : "disabled"}>
             <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-            ${canPlay ? "Play" : isResolvingProvider ? "Checking..." : "Not Available"}
+            ${canPlay || canAttemptPlay ? (isResolvingProvider ? "Checking..." : "Play") : "Not Available"}
           </button>
           <button class="secondary-button" type="button" data-action="toggle-watchlist" data-id="${safeText(item.id)}">
             <svg viewBox="0 0 24 24"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-3.5L6 21z"/></svg>
@@ -1974,9 +1976,18 @@ function attemptPlayerRecovery(reason = "player recovery") {
   }, 80);
 }
 
-function playItem(item, opts = {}) {
+async function playItem(item, opts = {}) {
   if (!item) return;
   if (!hasPlayableId(item)) {
+    const resolved = await resolveProviderItem(item);
+    if (providerId(resolved)) {
+      item = upsertResolvedItem(item, resolved);
+      if (state.page === "detail") render();
+    }
+  }
+
+  if (!hasPlayableId(item)) {
+    item = upsertResolvedItem(item, { ...item, providerChecked: true });
     openTitle(item);
     return;
   }
@@ -2172,14 +2183,15 @@ function normalizeProxyMatch(item, match) {
   const isTv = item.type === "tv";
   const title = isTv ? match.name || item.title : match.title || item.title;
   const originalTitle = isTv ? match.original_name || title : match.original_title || title;
+  const preferredTitle = titleSimilarityScore(item.title || "", originalTitle || "") > titleSimilarityScore(item.title || "", title || "") ? item.title : title;
   const date = proxyMatchDate(match, item.type);
   return {
     ...item,
     id: `${item.type}-${match.id}`,
     tmdbId: match.id,
-    title,
+    title: preferredTitle || title,
     originalTitle,
-    aliases: uniqueValues([...(item.aliases || []), title, originalTitle]),
+    aliases: uniqueValues([...(item.aliases || []), preferredTitle, title, originalTitle]),
     year: date ? String(date).slice(0, 4) : item.year,
     posterUrl: imageUrl(match.poster_path, "w500") || item.posterUrl,
     backdropUrl: imageUrl(match.backdrop_path || match.poster_path, "original") || item.backdropUrl,
@@ -2243,6 +2255,66 @@ async function fetchProxyDetail(type, tmdbId) {
   }
 }
 
+function pickTitleSearchMatch(item, results) {
+  if (!results?.length) return null;
+  const itemYearValue = Number(item.year || 0);
+  return [...results].sort((a, b) => {
+    const titleA = item.type === "tv" ? a.name : a.title;
+    const titleB = item.type === "tv" ? b.name : b.title;
+    const originalA = item.type === "tv" ? a.original_name : a.original_title;
+    const originalB = item.type === "tv" ? b.original_name : b.original_title;
+    const scoreA = Math.max(titleSimilarityScore(titleA || "", item.title || ""), titleSimilarityScore(originalA || "", item.title || ""));
+    const scoreB = Math.max(titleSimilarityScore(titleB || "", item.title || ""), titleSimilarityScore(originalB || "", item.title || ""));
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    if (itemYearValue) {
+      const yearA = Number(String(proxyMatchDate(a, item.type) || "").slice(0, 4));
+      const yearB = Number(String(proxyMatchDate(b, item.type) || "").slice(0, 4));
+      return Math.abs(yearA - itemYearValue) - Math.abs(yearB - itemYearValue);
+    }
+    return Number(b.popularity || 0) - Number(a.popularity || 0);
+  })[0];
+}
+
+async function resolveTitleToTmdb(item) {
+  if (!item?.title || providerId(item)) return item;
+  const queries = uniqueValues([item.title, item.originalTitle, ...(item.aliases || [])]).slice(0, 5);
+  for (const query of queries) {
+    try {
+      const url = new URL(`${TMDB_PROXY}/search/${item.type}`);
+      url.searchParams.set("query", query);
+      const response = await fetch(url.toString());
+      if (!response.ok) continue;
+      const data = await response.json();
+      const match = pickTitleSearchMatch(item, data.results || []);
+      if (!match) continue;
+      const normalized = normalizeProxyMatch(item, match);
+      if (providerId(normalized)) return (await fetchProxyDetail(normalized.type, providerId(normalized))) || normalized;
+    } catch (error) {
+      console.warn("Title provider lookup failed", error);
+    }
+  }
+  return { ...item, providerChecked: true };
+}
+
+async function resolveProviderItem(item) {
+  if (!item || providerId(item)) return item;
+  let resolved = item;
+  if (resolved.imdbId) resolved = await resolveImdbToTmdb(resolved);
+  if (!providerId(resolved)) resolved = await resolveTitleToTmdb(resolved);
+  return resolved;
+}
+
+function upsertResolvedItem(original, resolved) {
+  if (!resolved?.id) return original;
+  const oldId = original?.id;
+  state.items = mergeItems(state.items, [resolved]);
+  const stored = findItem(resolved.id) || resolved;
+  if (oldId && oldId !== stored.id) remapStoredItemId(oldId, stored.id);
+  if (state.selected?.id === oldId || state.selected?.id === stored.id) state.selected = stored;
+  if (state.activePlayerId === oldId) state.activePlayerId = stored.id;
+  return stored;
+}
+
 function pickProxyMatch(item, data) {
   const results = item.type === "tv" ? data?.tv_results || [] : data?.movie_results || [];
   if (!results.length) return null;
@@ -2281,7 +2353,7 @@ async function resolveImdbToTmdb(item) {
 async function resolveProviderIds(items) {
   const queue = items.filter((item) => item?.imdbId && !providerId(item)).slice(0, 48);
   if (!queue.length) return items;
-  const resolved = await Promise.all(queue.map(resolveImdbToTmdb));
+  const resolved = await Promise.all(queue.map(resolveProviderItem));
   const byOriginalId = new Map(queue.map((item, index) => [item.id, resolved[index]]));
   return items.map((item) => byOriginalId.get(item.id) || item);
 }
@@ -2650,22 +2722,19 @@ async function enrichSelected(item) {
   state.detailLoadingId = selectedId;
   if (state.selected?.id === selectedId) render();
 
-  if (!providerId(item) && item.imdbId) {
-    const resolved = await resolveImdbToTmdb(item);
+  if (!providerId(item) && (item.imdbId || item.title)) {
+    const resolved = await resolveProviderItem(item);
     if (detailToken !== state.detailToken) return;
-    if (resolved.id !== item.id || providerId(resolved)) {
+    if (resolved) {
       const oldId = item.id;
-      item = resolved;
-      selectedId = resolved.id;
+      const shouldRenderResolved = resolved.id !== item.id || providerId(resolved) || resolved.providerChecked !== item.providerChecked;
+      item = upsertResolvedItem(item, resolved);
+      selectedId = item.id;
       state.detailLoadingId = selectedId;
-      state.items = state.items.map((candidate) => (candidate.id === oldId ? resolved : candidate));
-      if (!state.items.some((candidate) => candidate.id === resolved.id)) state.items.push(resolved);
-      if (state.selected?.id === oldId) state.selected = resolved;
-      remapStoredItemId(oldId, resolved.id);
-      if (location.hash === `#/title/${encodeURIComponent(oldId)}`) {
-        history.replaceState(history.state || { page: "detail" }, "", `#/title/${encodeURIComponent(resolved.id)}`);
+      if (oldId !== item.id && location.hash === `#/title/${encodeURIComponent(oldId)}`) {
+        history.replaceState(history.state || { page: "detail" }, "", `#/title/${encodeURIComponent(item.id)}`);
       }
-      render();
+      if (shouldRenderResolved) render();
     }
   }
 
