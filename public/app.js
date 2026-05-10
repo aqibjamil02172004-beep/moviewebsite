@@ -602,6 +602,8 @@ const els = {
   playerFrame: document.getElementById("playerFrame"),
   playerTitle: document.getElementById("playerTitle"),
   playerMeta: document.getElementById("playerMeta"),
+  playerShieldTitle: document.getElementById("playerShieldTitle"),
+  playerShieldMeta: document.getElementById("playerShieldMeta"),
   playerControls: document.getElementById("playerControls"),
   closePlayer: document.getElementById("closePlayer"),
 };
@@ -661,6 +663,7 @@ function normalizeSeed(item) {
     posterUrl,
     backdropUrl,
     originalTitle: item.originalTitle || item.title,
+    providerTitle: item.providerTitle || item.title,
     aliases: uniqueValues([item.title, item.originalTitle, ...(item.aliases || [])]),
     region: item.region || (item.type === "movie" ? "Hollywood" : "TV"),
     source: APP_NAME,
@@ -765,6 +768,27 @@ function uniqueValues(values) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
 }
 
+function isSearchableLatinTitle(value) {
+  return normalizeCompact(value).length >= 3;
+}
+
+function displayTitleFromProvider(providerTitle, originalTitle, originalLanguage = "") {
+  const provider = String(providerTitle || originalTitle || "").trim();
+  const original = String(originalTitle || provider || "").trim();
+  if (!provider) return original;
+  if (!original) return provider;
+
+  const providerKey = normalizeCompact(provider);
+  const originalKey = normalizeCompact(original);
+  const language = String(originalLanguage || "").toLowerCase();
+
+  if (language && language !== "en" && providerKey !== originalKey && isSearchableLatinTitle(original)) {
+    return original;
+  }
+
+  return provider;
+}
+
 function searchForms(value) {
   const normalized = normalizeSearch(value);
   const compact = normalizeCompact(value);
@@ -774,7 +798,7 @@ function searchForms(value) {
 function searchableFields(item) {
   const aliases = Array.isArray(item.aliases) ? item.aliases : [];
   const searchAliases = Array.isArray(item.searchAliases) ? item.searchAliases : [];
-  const titleFields = uniqueValues([item.title, item.originalTitle, item.englishTitle, ...aliases]);
+  const titleFields = uniqueValues([item.title, item.originalTitle, item.englishTitle, item.providerTitle, ...aliases]);
   const metadata = uniqueValues([item.year, mediaLabel(item.type), item.type, item.source, item.region, item.imdbId, item.tmdbId, item.wikidataId, item.tvmazeId]);
   return [
     ...titleFields.map((value) => ({ value, weight: 1 })),
@@ -982,6 +1006,7 @@ function itemAliases(item) {
     item.tvmazeId ? `${item.type}:tvmaze:${item.tvmazeId}` : "",
     item.title ? `${item.type}:title:${normalizeSearch(item.title)}:${item.year || ""}` : "",
     item.originalTitle ? `${item.type}:original:${normalizeSearch(item.originalTitle)}:${item.year || ""}` : "",
+    item.providerTitle ? `${item.type}:provider:${normalizeSearch(item.providerTitle)}:${item.year || ""}` : "",
     ...aliases.map((alias) => `${item.type}:alias:${normalizeSearch(alias)}:${item.year || ""}`),
   ].filter(Boolean);
 }
@@ -989,7 +1014,7 @@ function itemAliases(item) {
 function mergeItemData(existing, incoming) {
   if (!existing) return { ...incoming, id: itemDisplayId(incoming) };
   const merged = { ...existing, ...incoming };
-  ["tmdbId", "posterUrl", "backdropUrl", "overview", "runtime", "imdbId", "wikidataId", "tvmazeId", "source", "originalTitle", "englishTitle"].forEach((key) => {
+  ["tmdbId", "posterUrl", "backdropUrl", "overview", "runtime", "imdbId", "wikidataId", "tvmazeId", "source", "originalTitle", "englishTitle", "providerTitle", "originalLanguage"].forEach((key) => {
     merged[key] = incoming[key] || existing[key] || "";
   });
   ["genres", "cast", "seasons", "episodes"].forEach((key) => {
@@ -1002,6 +1027,8 @@ function mergeItemData(existing, incoming) {
     incoming.title,
     existing.originalTitle,
     incoming.originalTitle,
+    existing.providerTitle,
+    incoming.providerTitle,
   ]);
   merged.searchAliases = uniqueValues([...(existing.searchAliases || []), ...(incoming.searchAliases || [])]);
   merged.rating = incoming.rating || existing.rating || null;
@@ -1936,10 +1963,13 @@ function syncPlayerLabels(item, season = state.currentSeason, episode = state.cu
   if (!item) return;
   els.playerTitle.textContent = item.title;
   const episodeName = item.type === "tv" ? currentEpisodeName(item, season, episode) : "";
-  els.playerMeta.textContent =
+  const metaText =
     item.type === "tv"
       ? `Season ${season}, Episode ${episode}${episodeName ? ` - ${episodeName}` : ""}`
       : `${itemYear(item)} movie`;
+  els.playerMeta.textContent = metaText;
+  if (els.playerShieldTitle) els.playerShieldTitle.textContent = item.title;
+  if (els.playerShieldMeta) els.playerShieldMeta.textContent = metaText;
   const seasonSelect = els.playerControls.querySelector('select[aria-label="Season"]');
   const episodeSelect = els.playerControls.querySelector('select[aria-label="Episode"]');
   if (seasonSelect) seasonSelect.value = String(season);
@@ -2181,8 +2211,9 @@ function proxyMatchDate(match, type) {
 function normalizeProxyMatch(item, match) {
   if (!match?.id) return item;
   const isTv = item.type === "tv";
-  const title = isTv ? match.name || item.title : match.title || item.title;
-  const originalTitle = isTv ? match.original_name || title : match.original_title || title;
+  const providerTitle = isTv ? match.name || item.title : match.title || item.title;
+  const originalTitle = isTv ? match.original_name || providerTitle : match.original_title || providerTitle;
+  const title = displayTitleFromProvider(providerTitle, originalTitle, match.original_language);
   const preferredTitle = titleSimilarityScore(item.title || "", originalTitle || "") > titleSimilarityScore(item.title || "", title || "") ? item.title : title;
   const date = proxyMatchDate(match, item.type);
   return {
@@ -2191,7 +2222,9 @@ function normalizeProxyMatch(item, match) {
     tmdbId: match.id,
     title: preferredTitle || title,
     originalTitle,
-    aliases: uniqueValues([...(item.aliases || []), preferredTitle, title, originalTitle]),
+    providerTitle,
+    originalLanguage: match.original_language || item.originalLanguage || "",
+    aliases: uniqueValues([...(item.aliases || []), preferredTitle, title, originalTitle, providerTitle]),
     year: date ? String(date).slice(0, 4) : item.year,
     posterUrl: imageUrl(match.poster_path, "w500") || item.posterUrl,
     backdropUrl: imageUrl(match.backdrop_path || match.poster_path, "original") || item.backdropUrl,
@@ -2205,8 +2238,9 @@ function normalizeProxyMatch(item, match) {
 function normalizeProxyDetail(data, type) {
   if (!data?.id) return null;
   const isTv = type === "tv";
-  const title = isTv ? data.name || data.original_name : data.title || data.original_title;
-  const originalTitle = isTv ? data.original_name || title : data.original_title || title;
+  const providerTitle = isTv ? data.name || data.original_name : data.title || data.original_title;
+  const originalTitle = isTv ? data.original_name || providerTitle : data.original_title || providerTitle;
+  const title = displayTitleFromProvider(providerTitle, originalTitle, data.original_language);
   const date = isTv ? data.first_air_date : data.release_date;
   const runtime = isTv
     ? data.episode_run_time?.[0]
@@ -2223,7 +2257,9 @@ function normalizeProxyDetail(data, type) {
     imdbId: isTv ? data.external_ids?.imdb_id || "" : data.imdb_id || "",
     title,
     originalTitle,
-    aliases: uniqueValues([title, originalTitle]),
+    providerTitle,
+    originalLanguage: data.original_language || "",
+    aliases: uniqueValues([title, originalTitle, providerTitle]),
     year: date ? String(date).slice(0, 4) : "",
     genres: (data.genres || []).map((genre) => genre.name).filter(Boolean),
     rating: data.vote_average || null,
@@ -2362,13 +2398,18 @@ function normalizeTmdbItem(item, explicitType) {
   const type = explicitType || item.media_type;
   const isTv = type === "tv";
   const date = isTv ? item.first_air_date : item.release_date;
+  const providerTitle = isTv ? item.name : item.title;
+  const originalTitle = isTv ? item.original_name || providerTitle : item.original_title || providerTitle;
+  const title = displayTitleFromProvider(providerTitle, originalTitle, item.original_language);
   return {
     id: `${isTv ? "tv" : "movie"}-${item.id}`,
     type: isTv ? "tv" : "movie",
     tmdbId: item.id,
-    title: isTv ? item.name : item.title,
-    originalTitle: isTv ? item.original_name || item.name : item.original_title || item.title,
-    aliases: uniqueValues([isTv ? item.name : item.title, isTv ? item.original_name : item.original_title]),
+    title,
+    originalTitle,
+    providerTitle,
+    originalLanguage: item.original_language || "",
+    aliases: uniqueValues([title, providerTitle, originalTitle]),
     year: date ? date.slice(0, 4) : "",
     genres: [],
     rating: item.vote_average || null,

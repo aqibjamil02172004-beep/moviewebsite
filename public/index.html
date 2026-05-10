@@ -149,13 +149,19 @@
           <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
       </div>
-      <iframe
-        id="playerFrame"
-        title="FlixDok Vidking player"
-        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-        allowfullscreen
-        referrerpolicy="no-referrer"
-      ></iframe>
+      <div class="player-frame-wrap">
+        <iframe
+          id="playerFrame"
+          title="FlixDok Vidking player"
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowfullscreen
+          referrerpolicy="no-referrer"
+        ></iframe>
+        <div class="player-title-shield" aria-hidden="true">
+          <strong id="playerShieldTitle">FlixDok Player</strong>
+          <span id="playerShieldMeta"></span>
+        </div>
+      </div>
     </div>
 
     <dialog class="modal" id="settingsModal">
@@ -200,6 +206,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260510-availability" defer></script>
+    <script src="./app.js?v=20260511-provider-title" defer></script>
   </body>
 </html>
