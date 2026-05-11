@@ -719,32 +719,81 @@ function safeText(value) {
 }
 
 const SEARCH_CHARACTER_MAP = {
-  ı: "i",
-  İ: "i",
-  ş: "s",
-  Ş: "s",
-  ğ: "g",
-  Ğ: "g",
-  ü: "u",
-  Ü: "u",
-  ö: "o",
-  Ö: "o",
-  ç: "c",
-  Ç: "c",
-  æ: "ae",
-  Æ: "ae",
-  ø: "o",
-  Ø: "o",
-  å: "a",
-  Å: "a",
-  ñ: "n",
-  Ñ: "n",
-  ß: "ss",
+  "\u0131": "i",
+  "\u0130": "i",
+  "\u015f": "s",
+  "\u015e": "s",
+  "\u011f": "g",
+  "\u011e": "g",
+  "\u00fc": "u",
+  "\u00dc": "u",
+  "\u00f6": "o",
+  "\u00d6": "o",
+  "\u00e7": "c",
+  "\u00c7": "c",
+  "\u00e6": "ae",
+  "\u00c6": "ae",
+  "\u0153": "oe",
+  "\u0152": "oe",
+  "\u00f8": "o",
+  "\u00d8": "o",
+  "\u00e5": "a",
+  "\u00c5": "a",
+  "\u00f1": "n",
+  "\u00d1": "n",
+  "\u00df": "ss",
+  "\u0111": "d",
+  "\u0110": "d",
+  "\u0142": "l",
+  "\u0141": "l",
+  "\u00fe": "th",
+  "\u00de": "th",
+  "\u00f0": "d",
+  "\u00d0": "d",
+};
+
+const SEARCH_ARTICLES = new Set(["a", "an", "the", "el", "la", "le", "les", "de", "der", "die", "das", "los", "las", "al"]);
+const SEARCH_DESCRIPTOR_WORDS = new Set(["chapter", "chap", "part", "pt", "volume", "vol", "season", "episode", "ep"]);
+const SEARCH_REMOTE_VARIANT_LIMIT = 16;
+const SEARCH_KEYWORD_LIMIT = 140;
+const SEARCH_FIELD_CACHE_LIMIT = 700;
+const SEARCH_FIELD_CACHE = new Map();
+
+const SEARCH_TYPE_KEYWORDS = {
+  movie: ["movie", "movies", "film", "films", "cinema", "feature", "watch movie"],
+  tv: ["tv", "tv show", "show", "shows", "series", "serial", "episode", "season", "web series"],
+};
+
+const SEARCH_REGION_KEYWORDS = {
+  bollywood: ["bollywood", "hindi", "indian", "india", "desi"],
+  hollywood: ["hollywood", "english", "american", "usa", "western"],
+  tv: ["tv", "series", "show"],
+};
+
+const SEARCH_GENRE_KEYWORDS = {
+  action: ["fight", "fighting", "martial arts", "hero"],
+  adventure: ["journey", "quest", "explore"],
+  animation: ["animated", "cartoon", "anime"],
+  comedy: ["funny", "humor", "humour", "laugh"],
+  crime: ["gangster", "mafia", "police", "detective"],
+  drama: ["emotional", "serious"],
+  fantasy: ["magic", "supernatural"],
+  history: ["historical", "true story"],
+  horror: ["scary", "ghost"],
+  mystery: ["detective", "secret"],
+  romance: ["love", "romantic"],
+  "sci fi": ["sci-fi", "science fiction", "space", "future"],
+  "sci-fi": ["sci fi", "science fiction", "space", "future"],
+  sport: ["sports"],
+  thriller: ["suspense", "mystery"],
 };
 
 function transliterate(value) {
   return String(value || "")
-    .replace(/[ıİşŞğĞüÜöÖçÇæÆøØåÅñÑß]/g, (char) => SEARCH_CHARACTER_MAP[char] || char)
+    .replace(
+      /[\u0131\u0130\u015f\u015e\u011f\u011e\u00fc\u00dc\u00f6\u00d6\u00e7\u00c7\u00e6\u00c6\u0153\u0152\u00f8\u00d8\u00e5\u00c5\u00f1\u00d1\u00df\u0111\u0110\u0142\u0141\u00fe\u00de\u00f0\u00d0]/g,
+      (char) => SEARCH_CHARACTER_MAP[char] || char,
+    )
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 }
@@ -766,6 +815,130 @@ function tokenizeSearch(value) {
 
 function uniqueValues(values) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+function collapseRepeatedCharacters(value) {
+  return String(value || "").replace(/(.)\1+/g, "$1");
+}
+
+function relaxedCompact(value) {
+  return collapseRepeatedCharacters(
+    normalizeCompact(value)
+      .replace(/ph/g, "f")
+      .replace(/ck/g, "k")
+      .replace(/qu/g, "kw")
+      .replace(/[cq]/g, "k")
+      .replace(/[vw]/g, "v")
+      .replace(/x/g, "ks")
+      .replace(/z/g, "s"),
+  );
+}
+
+function searchSkeleton(value) {
+  return relaxedCompact(value).replace(/[aeiouy]/g, "");
+}
+
+function stripLeadingArticles(value) {
+  const tokens = tokenizeSearch(value);
+  while (tokens.length > 1 && SEARCH_ARTICLES.has(tokens[0])) tokens.shift();
+  return tokens.join(" ");
+}
+
+function stripTitleDescriptors(value) {
+  return tokenizeSearch(value)
+    .filter((token) => !SEARCH_DESCRIPTOR_WORDS.has(token))
+    .join(" ");
+}
+
+function titleInitials(value) {
+  return tokenizeSearch(value)
+    .filter((token) => !SEARCH_ARTICLES.has(token) && !SEARCH_DESCRIPTOR_WORDS.has(token))
+    .map((token) => token[0])
+    .join("");
+}
+
+function spellingAlternates(value) {
+  const compact = normalizeCompact(value);
+  if (!compact) return [];
+  const alternates = new Set([compact, relaxedCompact(compact), collapseRepeatedCharacters(compact)]);
+  const replacements = [
+    [/aa/g, "a"],
+    [/ee/g, "i"],
+    [/oo/g, "u"],
+    [/ou/g, "u"],
+    [/w/g, "v"],
+    [/v/g, "w"],
+    [/ph/g, "f"],
+    [/f/g, "ph"],
+    [/q/g, "k"],
+    [/c/g, "k"],
+    [/z/g, "j"],
+    [/j/g, "z"],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    const replaced = compact.replace(pattern, replacement);
+    if (replaced !== compact) alternates.add(replaced);
+  }
+  const noDescriptors = normalizeCompact(stripTitleDescriptors(value));
+  if (noDescriptors && noDescriptors !== compact) alternates.add(noDescriptors);
+  return Array.from(alternates).filter((variant) => variant.length >= 2);
+}
+
+function titleSearchForms(value) {
+  const normalized = normalizeSearch(value);
+  const compact = normalizeCompact(value);
+  const stripped = stripLeadingArticles(value);
+  const descriptorless = stripTitleDescriptors(value);
+  const tokens = tokenizeSearch(value);
+  const forms = [
+    normalized,
+    compact,
+    stripped,
+    normalizeCompact(stripped),
+    descriptorless,
+    normalizeCompact(descriptorless),
+    relaxedCompact(value),
+    searchSkeleton(value),
+    titleInitials(value),
+    ...spellingAlternates(value),
+    ...tokens,
+  ];
+
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    forms.push(`${tokens[index]} ${tokens[index + 1]}`, `${tokens[index]}${tokens[index + 1]}`);
+  }
+
+  if (/^[a-z0-9]{2,12}$/.test(compact)) forms.push(compact.split("").join("."));
+  if (compact.includes("kgf")) forms.push("k g f", "k.g.f", "kgf");
+
+  return uniqueValues(forms).filter((form) => form.length >= 2);
+}
+
+function itemKeywordValues(item) {
+  const titleValues = uniqueValues([item.title, item.originalTitle, item.englishTitle, item.providerTitle, ...(item.aliases || [])]);
+  const genreValues = uniqueValues(
+    (item.genres || []).flatMap((genre) => {
+      const key = normalizeSearch(genre);
+      return [genre, key, ...(SEARCH_GENRE_KEYWORDS[key] || [])];
+    }),
+  );
+  const regionKey = normalizeSearch(item.region);
+  const typeValues = SEARCH_TYPE_KEYWORDS[item.type] || [];
+  const regionValues = SEARCH_REGION_KEYWORDS[regionKey] || [];
+  const yearValues = item.year ? [item.year, `${item.year} ${mediaLabel(item.type)}`, `${item.year} ${item.type}`] : [];
+  const idValues = uniqueValues([item.imdbId, item.tmdbId, item.wikidataId, item.tvmazeId]);
+  const keywordValues = uniqueValues([...(item.keywords || []), ...(item.searchAliases || [])]);
+
+  return uniqueValues([
+    ...titleValues,
+    ...titleValues.flatMap(titleSearchForms),
+    ...genreValues,
+    ...typeValues,
+    ...regionValues,
+    ...yearValues,
+    ...idValues,
+    ...keywordValues,
+  ]).slice(0, SEARCH_KEYWORD_LIMIT);
 }
 
 function isSearchableLatinTitle(value) {
@@ -795,19 +968,51 @@ function searchForms(value) {
   return uniqueValues([normalized, compact]);
 }
 
+function searchFieldCacheKey(item) {
+  return [
+    item.id,
+    item.title,
+    item.originalTitle,
+    item.englishTitle,
+    item.providerTitle,
+    item.year,
+    item.type,
+    item.region,
+    item.source,
+    (item.aliases || []).join("|"),
+    (item.searchAliases || []).join("|"),
+    (item.genres || []).join("|"),
+    (item.cast || []).join("|"),
+  ].join("::");
+}
+
 function searchableFields(item) {
+  const cacheKey = searchFieldCacheKey(item);
+  const cached = SEARCH_FIELD_CACHE.get(cacheKey);
+  if (cached) return cached;
+
   const aliases = Array.isArray(item.aliases) ? item.aliases : [];
   const searchAliases = Array.isArray(item.searchAliases) ? item.searchAliases : [];
   const titleFields = uniqueValues([item.title, item.originalTitle, item.englishTitle, item.providerTitle, ...aliases]);
+  const keywordFields = itemKeywordValues(item);
   const metadata = uniqueValues([item.year, mediaLabel(item.type), item.type, item.source, item.region, item.imdbId, item.tmdbId, item.wikidataId, item.tvmazeId]);
-  return [
+  const fields = [
     ...titleFields.map((value) => ({ value, weight: 1 })),
+    ...titleFields.flatMap((value) => titleSearchForms(value).map((form) => ({ value: form, weight: 0.92 }))),
+    ...keywordFields.map((value) => ({ value, weight: 0.72 })),
     ...searchAliases.map((value) => ({ value, weight: 0.16 })),
     ...(item.genres || []).map((value) => ({ value, weight: 0.78 })),
     ...(item.cast || []).map((value) => ({ value, weight: 0.66 })),
     ...metadata.map((value) => ({ value, weight: 0.5 })),
     ...(item.overview ? [{ value: item.overview, weight: 0.34 }] : []),
   ];
+  SEARCH_FIELD_CACHE.set(cacheKey, fields);
+  if (SEARCH_FIELD_CACHE.size > SEARCH_FIELD_CACHE_LIMIT) {
+    Array.from(SEARCH_FIELD_CACHE.keys())
+      .slice(0, SEARCH_FIELD_CACHE.size - SEARCH_FIELD_CACHE_LIMIT)
+      .forEach((key) => SEARCH_FIELD_CACHE.delete(key));
+  }
+  return fields;
 }
 
 function ngrams(value, size = 2) {
@@ -854,18 +1059,41 @@ function phoneticKey(value) {
 function fieldMatchScore(fieldValue, queryContext) {
   const normalized = normalizeSearch(fieldValue);
   const compact = normalizeCompact(fieldValue);
+  const relaxed = relaxedCompact(fieldValue);
+  const skeleton = searchSkeleton(fieldValue);
   if (!normalized || !queryContext.normalized) return 0;
 
   let score = 0;
   if (normalized === queryContext.normalized || compact === queryContext.compact) score = Math.max(score, 180);
+  if (queryContext.articleCompact && compact === queryContext.articleCompact) score = Math.max(score, 176);
+  if (queryContext.descriptorCompact && compact === queryContext.descriptorCompact) score = Math.max(score, 168);
+  if (relaxed && queryContext.relaxed && relaxed === queryContext.relaxed) score = Math.max(score, 166);
+  if (skeleton.length >= 3 && queryContext.skeleton.length >= 3 && skeleton === queryContext.skeleton) score = Math.max(score, 160);
   if (normalized.startsWith(queryContext.normalized)) score = Math.max(score, 130);
   if (compact.startsWith(queryContext.compact)) score = Math.max(score, 124);
+  if (queryContext.articleCompact && compact.startsWith(queryContext.articleCompact)) score = Math.max(score, 122);
+  if (queryContext.descriptorCompact && compact.startsWith(queryContext.descriptorCompact)) score = Math.max(score, 118);
+  if (relaxed && queryContext.relaxed && relaxed.startsWith(queryContext.relaxed)) score = Math.max(score, 116);
+  if (skeleton.length >= 3 && queryContext.skeleton.length >= 3 && skeleton.startsWith(queryContext.skeleton)) score = Math.max(score, 112);
   if (normalized.includes(queryContext.normalized)) score = Math.max(score, 94);
   if (compact.includes(queryContext.compact)) score = Math.max(score, 88);
+  if (queryContext.articleCompact && compact.includes(queryContext.articleCompact)) score = Math.max(score, 84);
+  if (queryContext.descriptorCompact && compact.includes(queryContext.descriptorCompact)) score = Math.max(score, 82);
+  if (relaxed && queryContext.relaxed && relaxed.includes(queryContext.relaxed)) score = Math.max(score, 78);
+  if (skeleton.length >= 4 && queryContext.skeleton.length >= 4 && skeleton.includes(queryContext.skeleton)) score = Math.max(score, 76);
 
-  if (queryContext.tokens.length > 1) {
-    const tokenHits = queryContext.tokens.filter((token) => normalized.includes(token) || compact.includes(token));
-    if (tokenHits.length === queryContext.tokens.length) score = Math.max(score, 76);
+  const meaningfulTokens = queryContext.tokens.filter((token) => token.length >= 2);
+  if (meaningfulTokens.length > 1) {
+    const fieldTokens = tokenizeSearch(fieldValue);
+    const tokenHits = meaningfulTokens.filter((token) => {
+      const relaxedToken = relaxedCompact(token);
+      return (
+        normalized.includes(token) ||
+        compact.includes(token) ||
+        fieldTokens.some((fieldToken) => fieldToken.startsWith(token) || relaxedCompact(fieldToken).startsWith(relaxedToken))
+      );
+    });
+    if (tokenHits.length === meaningfulTokens.length) score = Math.max(score, 76);
     else if (tokenHits.length) score = Math.max(score, 34 + tokenHits.length * 12);
   }
 
@@ -888,16 +1116,57 @@ function fieldMatchScore(fieldValue, queryContext) {
     else if (distance === 3 && queryContext.compact.length >= 7) score = Math.max(score, 42);
   }
 
+  if (queryContext.relaxed.length >= 4 && relaxed.length >= 4) {
+    const distance = levenshteinDistance(relaxed, queryContext.relaxed, 3);
+    if (distance <= 1) score = Math.max(score, 92);
+    else if (distance === 2) score = Math.max(score, 68);
+    else if (distance === 3 && queryContext.relaxed.length >= 7) score = Math.max(score, 48);
+  }
+
+  if (queryContext.skeleton.length >= 4 && skeleton.length >= 4) {
+    const distance = levenshteinDistance(skeleton, queryContext.skeleton, 2);
+    if (distance <= 1) score = Math.max(score, 86);
+    else if (distance === 2 && queryContext.skeleton.length >= 5) score = Math.max(score, 58);
+  }
+
   if (queryContext.sound && phoneticKey(compact).startsWith(queryContext.sound)) score = Math.max(score, 36);
   return score;
+}
+
+function aggregateFieldMatchScore(fields, queryContext) {
+  const meaningfulTokens = queryContext.tokens.filter((token) => token.length >= 2);
+  if (meaningfulTokens.length <= 1) return 0;
+
+  const normalizedText = fields.map((field) => normalizeSearch(field.value)).join(" ");
+  const compactText = normalizedText.replace(/\s+/g, "");
+  const relaxedText = relaxedCompact(normalizedText);
+  const tokenHits = meaningfulTokens.filter((token) => {
+    const compactToken = normalizeCompact(token);
+    const relaxedToken = relaxedCompact(token);
+    return normalizedText.includes(token) || compactText.includes(compactToken) || relaxedText.includes(relaxedToken);
+  });
+
+  if (tokenHits.length === meaningfulTokens.length) return Math.min(150, 92 + meaningfulTokens.length * 16);
+  if (tokenHits.length >= 2) return 46 + tokenHits.length * 12;
+  return 0;
 }
 
 function buildQueryContext(query) {
   const normalized = normalizeSearch(query);
   const compact = normalizeCompact(query);
+  const relaxed = relaxedCompact(query);
+  const skeleton = searchSkeleton(query);
+  const articleStripped = stripLeadingArticles(query);
+  const descriptorless = stripTitleDescriptors(query);
   return {
     normalized,
     compact,
+    relaxed,
+    skeleton,
+    articleStripped,
+    articleCompact: normalizeCompact(articleStripped),
+    descriptorless,
+    descriptorCompact: normalizeCompact(descriptorless),
     tokens: tokenizeSearch(query),
     grams: ngrams(compact, compact.length <= 4 ? 2 : 3),
     sound: phoneticKey(query),
@@ -906,16 +1175,26 @@ function buildQueryContext(query) {
 
 function realTitleFields(item) {
   const aliases = Array.isArray(item.aliases) ? item.aliases : [];
-  return uniqueValues([item.title, item.originalTitle, item.englishTitle, ...aliases]);
+  return uniqueValues([item.title, item.originalTitle, item.englishTitle, item.providerTitle, ...aliases]);
 }
 
 function wholeTitleMatchScore(fieldValue, queryContext) {
   const normalized = normalizeSearch(fieldValue);
   const compact = normalizeCompact(fieldValue);
+  const relaxed = relaxedCompact(fieldValue);
+  const skeleton = searchSkeleton(fieldValue);
   if (!normalized || !queryContext.normalized) return 0;
 
   if (normalized === queryContext.normalized || compact === queryContext.compact) return 230;
+  if (queryContext.articleCompact && compact === queryContext.articleCompact) return 224;
+  if (queryContext.descriptorCompact && compact === queryContext.descriptorCompact) return 214;
+  if (relaxed && queryContext.relaxed && relaxed === queryContext.relaxed) return 210;
+  if (skeleton.length >= 3 && queryContext.skeleton.length >= 3 && skeleton === queryContext.skeleton) return 202;
   if (normalized.startsWith(queryContext.normalized) || compact.startsWith(queryContext.compact)) return queryContext.compact.length <= 3 ? 180 : 170;
+  if (queryContext.articleCompact && compact.startsWith(queryContext.articleCompact)) return queryContext.articleCompact.length <= 3 ? 176 : 164;
+  if (queryContext.descriptorCompact && compact.startsWith(queryContext.descriptorCompact)) return queryContext.descriptorCompact.length <= 3 ? 170 : 158;
+  if (relaxed && queryContext.relaxed && relaxed.startsWith(queryContext.relaxed)) return queryContext.relaxed.length <= 3 ? 166 : 154;
+  if (skeleton.length >= 3 && queryContext.skeleton.length >= 3 && skeleton.startsWith(queryContext.skeleton)) return queryContext.skeleton.length <= 3 ? 154 : 146;
 
   const extraLength = Math.abs(compact.length - queryContext.compact.length);
   const fullDistance = levenshteinDistance(compact, queryContext.compact, 4);
@@ -923,10 +1202,21 @@ function wholeTitleMatchScore(fieldValue, queryContext) {
   if (fullDistance <= 2 && extraLength <= 3) return 156;
   if (fullDistance <= 3 && extraLength <= 4 && queryContext.compact.length >= 7) return 126;
 
+  const relaxedDistance = levenshteinDistance(relaxed, queryContext.relaxed, 3);
+  if (relaxedDistance <= 1 && queryContext.relaxed.length >= 4) return 168;
+  if (relaxedDistance <= 2 && queryContext.relaxed.length >= 6) return 142;
+
+  const skeletonDistance = levenshteinDistance(skeleton, queryContext.skeleton, 2);
+  if (skeletonDistance <= 1 && queryContext.skeleton.length >= 4) return 158;
+  if (skeletonDistance <= 2 && queryContext.skeleton.length >= 6) return 132;
+
   if (compact.includes(queryContext.compact)) {
     const trailingLength = compact.length - queryContext.compact.length;
     return trailingLength <= 4 ? 146 : 92;
   }
+
+  if (queryContext.relaxed && relaxed.includes(queryContext.relaxed)) return 88;
+  if (queryContext.skeleton.length >= 4 && skeleton.includes(queryContext.skeleton)) return 82;
 
   return 0;
 }
@@ -944,33 +1234,67 @@ function searchTextScore(item, query) {
   const compact = normalizeCompact(query);
   const queryContext = buildQueryContext(query);
   if (!queryContext.normalized) return 1;
-  const best = searchableFields(item).reduce((maxScore, field) => {
+  const fields = searchableFields(item);
+  const best = fields.reduce((maxScore, field) => {
     const score = fieldMatchScore(field.value, queryContext) * field.weight;
     return Math.max(maxScore, score);
   }, 0);
+  const aggregate = aggregateFieldMatchScore(fields, queryContext);
 
-  const aliasParts = uniqueValues([item.title, item.originalTitle, ...(item.aliases || [])]).flatMap(tokenizeSearch);
-  const tokenPrefixBonus = aliasParts.some((part) => compact && part.startsWith(compact)) ? 20 : 0;
-  return best + tokenPrefixBonus;
+  const aliasParts = uniqueValues([item.title, item.originalTitle, item.englishTitle, item.providerTitle, ...(item.aliases || [])]).flatMap(tokenizeSearch);
+  const tokenPrefixBonus = aliasParts.some((part) => {
+    const relaxedPart = relaxedCompact(part);
+    const skeletonPart = searchSkeleton(part);
+    return (
+      (compact && part.startsWith(compact)) ||
+      (queryContext.relaxed && relaxedPart.startsWith(queryContext.relaxed)) ||
+      (queryContext.skeleton.length >= 3 && skeletonPart.startsWith(queryContext.skeleton))
+    );
+  })
+    ? 26
+    : 0;
+  return Math.max(best, aggregate) + tokenPrefixBonus;
 }
 
 function queryMatchesItem(item, query) {
   const compact = normalizeCompact(query);
   if (!compact) return true;
-  const score = searchTextScore(item, query);
-  const threshold = compact.length <= 2 ? 32 : compact.length <= 4 ? 38 : compact.length <= 7 ? 42 : 36;
-  return score >= threshold;
+  const textScore = searchTextScore(item, query);
+  const titleScore = realTitleScore(item, query);
+  const titleThreshold = compact.length <= 2 ? 42 : compact.length <= 4 ? 46 : compact.length <= 7 ? 50 : 44;
+  const keywordThreshold = compact.length <= 2 ? 54 : compact.length <= 4 ? 60 : compact.length <= 7 ? 74 : 80;
+  return titleScore >= titleThreshold || textScore >= keywordThreshold;
 }
 
 function searchQueryVariants(query) {
   const normalized = normalizeSearch(query);
   const compact = normalizeCompact(query);
-  const variants = [query.trim(), normalized, compact];
+  const stripped = stripLeadingArticles(query);
+  const descriptorless = stripTitleDescriptors(query);
+  const variants = [
+    query.trim(),
+    normalized,
+    compact,
+    stripped,
+    normalizeCompact(stripped),
+    descriptorless,
+    normalizeCompact(descriptorless),
+    relaxedCompact(query),
+    searchSkeleton(query),
+    titleInitials(query),
+    ...spellingAlternates(query),
+  ];
+  tokenizeSearch(query).forEach((token) => {
+    variants.push(token, ...spellingAlternates(token));
+  });
   if (/^[a-z0-9]{2,10}$/i.test(compact)) variants.push(compact.split("").join("."));
   if (compact.length >= 5) variants.push(compact.slice(0, -1));
   if (compact.endsWith("l")) variants.push(`${compact}i`);
+  if (compact.endsWith("i")) variants.push(compact.slice(0, -1));
   if (compact.includes("kgf")) variants.push(compact.replace(/kgf/g, "k.g.f"));
-  return uniqueValues(variants);
+  return uniqueValues(variants)
+    .filter((variant) => normalizeCompact(variant).length >= 2)
+    .slice(0, SEARCH_REMOTE_VARIANT_LIMIT);
 }
 
 function usesPosterArtwork(item) {
@@ -2645,13 +2969,15 @@ function searchResultScore(item, query) {
   const textScore = searchTextScore(item, query);
   const titleScore = realTitleScore(item, query);
   const queryLength = normalizeCompact(query).length;
-  let score = textScore * 1.5 + titleScore * 3.5;
+  let score = textScore * 1.35 + titleScore * 4.4;
 
-  if (titleScore >= 170) score += 260;
-  else if (titleScore >= 120) score += 180;
-  else if (titleScore >= 90) score += 115;
-  else if (titleScore >= 58) score += 54;
-  else if (queryLength >= 5) score -= 110;
+  if (titleScore >= 220) score += 520;
+  else if (titleScore >= 190) score += 430;
+  else if (titleScore >= 160) score += 340;
+  else if (titleScore >= 120) score += 220;
+  else if (titleScore >= 90) score += 130;
+  else if (titleScore >= 58) score += 58;
+  else if (queryLength >= 5) score -= textScore >= 90 ? 40 : 220;
 
   if (hasPlayableId(item)) score += 34;
   else if (item.imdbId) score += 10;
@@ -2719,13 +3045,15 @@ async function searchRemote(query) {
 
   const localMatches = SEED_TITLES.map(normalizeSeed).filter((item) => queryMatchesItem(item, query));
   const variants = searchQueryVariants(query);
+  const primaryVariants = variants.slice(0, 7);
+  const wikiVariants = variants.slice(0, 5);
 
   const requests = [
-    state.profile.tmdbKey ? Promise.all(variants.map((variant) => tmdbSearchPages(variant))).then((lists) => lists.flat()) : Promise.resolve([]),
-    Promise.all(variants.map((variant) => searchWikidataMedia(variant))).then((lists) => lists.flat()),
-    Promise.all(variants.map((variant) => searchImdbSuggestions(variant))).then((lists) => lists.flat()),
+    state.profile.tmdbKey ? Promise.all(primaryVariants.map((variant) => tmdbSearchPages(variant))).then((lists) => lists.flat()) : Promise.resolve([]),
+    Promise.all(wikiVariants.map((variant) => searchWikidataMedia(variant))).then((lists) => lists.flat()),
+    searchImdbSuggestions(query),
     Promise.all(
-      variants.map((variant) =>
+      primaryVariants.map((variant) =>
         fetch(`${TVMAZE_API}/search/shows?q=${encodeURIComponent(variant)}`)
           .then((response) => (response.ok ? response.json() : []))
           .then((data) =>
