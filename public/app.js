@@ -1303,6 +1303,171 @@ function usesPosterArtwork(item) {
   return item.source === "IMDb" || item.source === "Wikidata";
 }
 
+function siteOrigin() {
+  return location.origin || "https://flixdok.xyz";
+}
+
+function cleanRoutePath(path) {
+  const value = String(path || "/");
+  return value.endsWith("/") ? value : `${value}/`;
+}
+
+function titlePath(itemOrId) {
+  const id = typeof itemOrId === "string" ? itemOrId : itemOrId?.id;
+  return cleanRoutePath(`/title/${encodeURIComponent(id || "")}`);
+}
+
+function categoryPath(category) {
+  return cleanRoutePath(`/category/${encodeURIComponent(category)}`);
+}
+
+function absoluteUrl(path = "/") {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${siteOrigin()}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function currentReturnPath() {
+  if (location.pathname.startsWith("/category/")) return cleanRoutePath(location.pathname);
+  if (isCategoryView()) return categoryPath(state.view);
+  return "/";
+}
+
+function compactDescription(value, fallback) {
+  const text = String(value || fallback || "").replace(/\s+/g, " ").trim();
+  if (text.length <= 160) return text;
+  return `${text.slice(0, 157).replace(/\s+\S*$/, "")}...`;
+}
+
+function seoKeywords(values) {
+  return uniqueValues(values)
+    .slice(0, 18)
+    .join(", ");
+}
+
+function setMeta(selector, attributes) {
+  let element = document.head.querySelector(selector);
+  if (!element) {
+    element = document.createElement(selector.startsWith("link") ? "link" : "meta");
+    const nameMatch = selector.match(/\[(name|property|rel)="([^"]+)"\]/);
+    if (nameMatch) element.setAttribute(nameMatch[1], nameMatch[2]);
+    document.head.appendChild(element);
+  }
+  Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+}
+
+function updateStructuredData(data) {
+  let script = document.getElementById("structuredData");
+  if (!script) {
+    script = document.createElement("script");
+    script.id = "structuredData";
+    script.type = "application/ld+json";
+    document.head.appendChild(script);
+  }
+  script.textContent = JSON.stringify(data);
+}
+
+function itemStructuredData(item, url) {
+  const isTv = item.type === "tv";
+  return {
+    "@context": "https://schema.org",
+    "@type": isTv ? "TVSeries" : "Movie",
+    name: item.title,
+    alternateName: uniqueValues([item.originalTitle, item.englishTitle, item.providerTitle, ...(item.aliases || [])]).filter((value) => value !== item.title),
+    url,
+    image: item.posterUrl || item.backdropUrl || undefined,
+    description: item.overview || undefined,
+    datePublished: item.year || undefined,
+    genre: item.genres || undefined,
+    actor: (item.cast || []).slice(0, 8).map((name) => ({ "@type": "Person", name })),
+    aggregateRating: scoreValue(item)
+      ? {
+          "@type": "AggregateRating",
+          ratingValue: Number(scoreValue(item)).toFixed(1),
+          bestRating: "10",
+        }
+      : undefined,
+  };
+}
+
+function updateSeoMeta(item = state.selected) {
+  const baseDescription = "Search movies and TV shows on FlixDok with ratings, posters, watchlists, progress tracking, and episode selection.";
+  let title = APP_NAME;
+  let description = baseDescription;
+  let path = "/";
+  let image = "https://image.tmdb.org/t/p/original/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg";
+  let ogType = "website";
+  let keywords = seoKeywords([APP_NAME, "movies", "TV shows", "watch movies", "movie ratings", "episode guide", "Bollywood movies", "Hollywood movies", "streaming search", "watchlist"]);
+  let structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: APP_NAME,
+    url: absoluteUrl("/"),
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${absoluteUrl("/")}?q={search_term_string}`,
+      "query-input": "required name=search_term_string",
+    },
+  };
+
+  if (state.page === "detail" && item?.title && item.title !== "Loading title...") {
+    const media = mediaLabel(item.type);
+    title = `${item.title} (${item.year || media}) - Watch ${media} on ${APP_NAME}`;
+    description = compactDescription(item.overview, `Watch ${item.title} on ${APP_NAME}. View ratings, cast, posters, and ${item.type === "tv" ? "episodes" : "movie"} details.`);
+    path = titlePath(item);
+    image = item.backdropUrl || item.posterUrl || image;
+    ogType = "video.other";
+    keywords = seoKeywords([item.title, item.originalTitle, item.englishTitle, item.providerTitle, ...(item.aliases || []), media, item.year, ...(item.genres || []), ...(item.cast || []).slice(0, 6), APP_NAME]);
+    structuredData = itemStructuredData(item, absoluteUrl(path));
+  } else if (isCategoryView()) {
+    title = `${categoryTitle()} - ${APP_NAME}`;
+    description = compactDescription(`Browse ${categoryTitle().toLowerCase()} on ${APP_NAME} with ratings, posters, filters, and watchlist support.`, baseDescription);
+    path = categoryPath(state.view);
+    keywords = seoKeywords([categoryTitle(), state.view, "movies", "ratings", "posters", APP_NAME]);
+    structuredData = {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: categoryTitle(),
+      url: absoluteUrl(path),
+      description,
+    };
+  } else if (state.view === "movie") {
+    title = `Movies - ${APP_NAME}`;
+    description = `Browse movies on ${APP_NAME} with ratings, posters, watchlists, and search.`;
+    path = "/movies/";
+    keywords = seoKeywords(["movies", "watch movies", "movie ratings", "Hollywood movies", "Bollywood movies", APP_NAME]);
+  } else if (state.view === "tv") {
+    title = `TV Shows - ${APP_NAME}`;
+    description = `Browse TV shows on ${APP_NAME} with seasons, episodes, ratings, posters, and search.`;
+    path = "/tv-shows/";
+    keywords = seoKeywords(["TV shows", "series", "episodes", "seasons", "episode guide", "watch TV shows", APP_NAME]);
+  } else if (state.view === "watchlist") {
+    title = `Watchlist - ${APP_NAME}`;
+    description = `Your local ${APP_NAME} watchlist and continue watching progress.`;
+    path = "/watchlist/";
+    keywords = seoKeywords(["watchlist", "continue watching", "movie progress", "TV progress", APP_NAME]);
+  } else if (state.query) {
+    title = `Search results for "${state.query}" - ${APP_NAME}`;
+    description = compactDescription(`Search results for ${state.query} on ${APP_NAME}. Find matching movies and TV shows with ratings and posters.`, baseDescription);
+    keywords = seoKeywords([state.query, "movie search", "TV search", "streaming search", APP_NAME]);
+  }
+
+  document.title = title;
+  setMeta('meta[name="description"]', { content: description });
+  setMeta('meta[name="keywords"]', { content: keywords });
+  setMeta('link[rel="canonical"]', { href: absoluteUrl(path) });
+  setMeta('meta[property="og:site_name"]', { content: APP_NAME });
+  setMeta('meta[property="og:title"]', { content: title });
+  setMeta('meta[property="og:description"]', { content: description });
+  setMeta('meta[property="og:type"]', { content: ogType });
+  setMeta('meta[property="og:url"]', { content: absoluteUrl(path) });
+  setMeta('meta[property="og:image"]', { content: absoluteUrl(image) });
+  setMeta('meta[name="twitter:card"]', { content: "summary_large_image" });
+  setMeta('meta[name="twitter:title"]', { content: title });
+  setMeta('meta[name="twitter:description"]', { content: description });
+  setMeta('meta[name="twitter:image"]', { content: absoluteUrl(image) });
+  updateStructuredData(structuredData);
+}
+
 function debounce(fn, wait = 350) {
   let timeout;
   return (...args) => {
@@ -1485,6 +1650,7 @@ function render() {
     els.homeScreen.hidden = true;
     els.quickHelp.hidden = true;
     els.detailPanel.hidden = false;
+    updateSeoMeta(state.selected);
     renderDetail(state.selected);
     return;
   }
@@ -1492,6 +1658,7 @@ function render() {
   els.homeScreen.hidden = false;
   els.quickHelp.hidden = true;
   els.detailPanel.hidden = true;
+  updateSeoMeta(state.selected);
   if (!state.selected || !visible.some((item) => item.id === state.selected.id)) {
     state.selected = featuredItem(visible) || state.items[0] || null;
   }
@@ -1745,7 +1912,7 @@ function renderMediaCard(item, opts = {}) {
   const meta = [item.runtime, itemYear(item), mediaLabel(item.type)].filter(Boolean).join(" / ");
   const subline = (item.genres || []).slice(0, 2).join(" / ") || meta;
   const posterSourceClass = opts.wide && usesPosterArtwork(item) ? "is-poster-source" : "";
-  const href = `#/title/${encodeURIComponent(item.id)}`;
+  const href = titlePath(item);
   return `
     <a class="media-card ${opts.wide ? "is-wide" : ""} ${opts.compact ? "is-compact" : ""} ${posterSourceClass}" href="${safeText(href)}" data-action="open-title" data-id="${safeText(item.id)}">
       <span class="media-art">
@@ -1782,7 +1949,7 @@ function renderGrid(items) {
         const statusClass = hasPlayableId(item) ? "is-ready" : item.imdbId && !item.providerChecked ? "is-pending" : "is-unavailable";
         const source = item.source || APP_NAME;
         const progress = playbackProgress(item);
-        const href = `#/title/${encodeURIComponent(item.id)}`;
+        const href = titlePath(item);
         return `
       <a class="poster-card ${isSearch ? "search-card" : ""} ${state.selected?.id === item.id ? "is-selected" : ""}" href="${safeText(href)}" data-action="open-title" data-id="${safeText(item.id)}">
         <span class="poster-art">
@@ -3100,8 +3267,8 @@ async function enrichSelected(item) {
       item = upsertResolvedItem(item, resolved);
       selectedId = item.id;
       state.detailLoadingId = selectedId;
-      if (oldId !== item.id && location.hash === `#/title/${encodeURIComponent(oldId)}`) {
-        history.replaceState(history.state || { page: "detail" }, "", `#/title/${encodeURIComponent(item.id)}`);
+      if (oldId !== item.id && (location.hash === `#/title/${encodeURIComponent(oldId)}` || cleanRoutePath(location.pathname) === titlePath(oldId))) {
+        history.replaceState(history.state || { page: "detail" }, "", titlePath(item));
       }
       if (shouldRenderResolved) render();
     }
@@ -3255,7 +3422,7 @@ function scrollToTop(behavior = "smooth") {
 
 function openTitle(item, push = true) {
   if (!item) return;
-  const returnHash = location.hash.startsWith("#/category/") ? location.hash : "";
+  const returnPath = currentReturnPath();
   state.page = "detail";
   state.selected = item;
   state.currentSeason = 1;
@@ -3263,20 +3430,20 @@ function openTitle(item, push = true) {
   scrollToTop("auto");
   render();
   enrichSelected(item);
-  if (push) history.pushState({ page: "detail", id: item.id, returnHash }, "", `#/title/${encodeURIComponent(item.id)}`);
+  if (push) history.pushState({ page: "detail", id: item.id, returnPath }, "", titlePath(item));
 }
 
 function closeTitle(push = true) {
   state.page = "home";
   scrollToTop("auto");
   render();
-  if (push && location.hash.startsWith("#/title/")) {
-    const returnHash = history.state?.returnHash;
-    if (returnHash) {
-      history.pushState({ page: "category" }, "", returnHash);
-      restoreRouteFromHash();
+  if (push && (location.hash.startsWith("#/title/") || location.pathname.startsWith("/title/"))) {
+    const returnPath = history.state?.returnPath;
+    if (returnPath && returnPath !== "/") {
+      history.pushState({ page: "category" }, "", returnPath);
+      restoreRouteFromLocation();
     } else {
-      history.pushState({ page: "home" }, "", location.pathname);
+      history.pushState({ page: "home" }, "", "/");
     }
   }
 }
@@ -3335,7 +3502,7 @@ async function resolveRouteItem(id, ignoreExisting = false) {
   return null;
 }
 
-async function openHashTitle(id) {
+async function openRouteTitle(id) {
   const token = ++state.routeToken;
   const placeholder = routePlaceholder(id);
   state.page = "detail";
@@ -3362,26 +3529,72 @@ async function openHashTitle(id) {
   state.items = mergeItems(state.items, [resolved]);
   state.selected = findItem(resolved.id) || resolved;
   remapStoredItemId(id, resolved.id);
-  if (location.hash === `#/title/${encodeURIComponent(id)}`) {
-    history.replaceState(history.state || { page: "detail" }, "", `#/title/${encodeURIComponent(resolved.id)}`);
+  if (location.hash === `#/title/${encodeURIComponent(id)}` || cleanRoutePath(location.pathname) === titlePath(id)) {
+    history.replaceState(history.state || { page: "detail" }, "", titlePath(resolved));
   }
   render();
   enrichSelected(state.selected);
 }
 
-function restoreRouteFromHash() {
+function routeFromLocation() {
   const categoryMatch = location.hash.match(/^#\/category\/(bollywood|hollywood)$/);
-  if (categoryMatch) {
-    openCategoryPage(categoryMatch[1], false);
+  if (categoryMatch) return { type: "category", category: categoryMatch[1] };
+  const titleHashMatch = location.hash.match(/^#\/title\/(.+)$/);
+  if (titleHashMatch) return { type: "title", id: decodeURIComponent(titleHashMatch[1]) };
+
+  const path = cleanRoutePath(location.pathname);
+  const categoryPathMatch = path.match(/^\/category\/(bollywood|hollywood)\/$/);
+  if (categoryPathMatch) return { type: "category", category: categoryPathMatch[1] };
+  const titlePathMatch = path.match(/^\/title\/([^/]+)\/$/);
+  if (titlePathMatch) return { type: "title", id: decodeURIComponent(titlePathMatch[1]) };
+  if (path === "/movies/") return { type: "section", view: "movie", filter: "movie" };
+  if (path === "/tv-shows/") return { type: "section", view: "tv", filter: "tv" };
+  if (path === "/watchlist/") return { type: "section", view: "watchlist", filter: "all" };
+  return null;
+}
+
+function restoreRouteFromLocation() {
+  const route = routeFromLocation();
+  if (!route) return false;
+  if (route.type === "category") {
+    openCategoryPage(route.category, false);
+    return true;
+  }
+  if (route.type === "section") {
+    state.page = "home";
+    state.view = route.view;
+    state.filter = route.filter;
+    resetCategoryState();
+    state.selected = displayItems()[0] || state.items[0] || null;
+    render();
+    enrichSelected(state.selected);
     return true;
   }
 
-  const match = location.hash.match(/^#\/title\/(.+)$/);
-  if (!match) return false;
-  const id = decodeURIComponent(match[1]);
+  const id = route.id;
   const item = findItem(id);
   if (item) openTitle(item, false);
-  else openHashTitle(id);
+  else openRouteTitle(id);
+  return true;
+}
+
+function restoreRouteFromHash() {
+  return restoreRouteFromLocation();
+}
+
+function restoreSearchFromQueryParam() {
+  const query = new URLSearchParams(location.search).get("q")?.trim();
+  if (!query) return false;
+  state.query = query;
+  els.searchInput.value = query;
+  state.page = "home";
+  state.view = "home";
+  state.filter = "all";
+  resetCategoryState();
+  showInstantSearchResults(query);
+  state.selected = displayItems()[0] || state.items[0] || null;
+  render();
+  if (query.length >= 2) searchRemote(query);
   return true;
 }
 
@@ -3401,7 +3614,8 @@ function applySection(view, filter = view === "home" ? "all" : view) {
   render();
   enrichSelected(state.selected);
   if (wasSearching) hydrateHome();
-  if (location.hash) history.pushState({ page: "home" }, "", location.pathname);
+  const sectionPath = view === "movie" ? "/movies/" : view === "tv" ? "/tv-shows/" : view === "watchlist" ? "/watchlist/" : "/";
+  if (location.hash || location.pathname !== sectionPath) history.pushState({ page: "home", view }, "", sectionPath);
 }
 
 function openCategoryPage(category, push = true) {
@@ -3418,7 +3632,7 @@ function openCategoryPage(category, push = true) {
   scrollToTop();
   render();
   enrichSelected(state.selected);
-  if (push) history.pushState({ page: "category", category }, "", `#/category/${category}`);
+  if (push) history.pushState({ page: "category", category }, "", categoryPath(category));
 }
 
 function resetCategoryState() {
@@ -3831,9 +4045,9 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("popstate", () => {
-  if (!restoreRouteFromHash()) {
+  if (!restoreRouteFromLocation()) {
     state.page = "home";
-    if (!location.hash) {
+    if (!location.hash && location.pathname === "/") {
       state.view = "home";
       state.filter = "all";
       resetCategoryState();
@@ -3842,7 +4056,7 @@ window.addEventListener("popstate", () => {
   }
 });
 window.addEventListener("hashchange", () => {
-  if (restoreRouteFromHash()) return;
+  if (restoreRouteFromLocation()) return;
   if (!location.hash && state.page === "detail") closeTitle(false);
 });
 
@@ -3940,6 +4154,6 @@ setActiveFilter();
 installPopupGuard();
 state.selected = state.items[0];
 scrollToTop("auto");
-if (!restoreRouteFromHash()) render();
+if (!restoreRouteFromLocation() && !restoreSearchFromQueryParam()) render();
 hydrateHome();
 startHeroRotation();

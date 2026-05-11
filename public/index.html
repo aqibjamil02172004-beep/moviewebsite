@@ -2,18 +2,54 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#050505" />
     <meta
       name="description"
       content="FlixDok is a premium movie and TV search interface with Vidking playback, local profiles, watchlists, ratings, posters, and episode selection."
     />
+    <meta
+      name="keywords"
+      content="FlixDok, movies, TV shows, watch movies, movie ratings, episode guide, Bollywood movies, Hollywood movies, streaming search, watchlist"
+    />
+    <link rel="canonical" href="https://flixdok.xyz/" />
+    <meta property="og:site_name" content="FlixDok" />
+    <meta property="og:title" content="FlixDok" />
+    <meta
+      property="og:description"
+      content="Search movies and TV shows on FlixDok with ratings, posters, watchlists, progress tracking, and episode selection."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://flixdok.xyz/" />
+    <meta property="og:image" content="https://image.tmdb.org/t/p/original/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="FlixDok" />
+    <meta
+      name="twitter:description"
+      content="Search movies and TV shows on FlixDok with ratings, posters, watchlists, progress tracking, and episode selection."
+    />
+    <meta name="twitter:image" content="https://image.tmdb.org/t/p/original/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg" />
     <title>FlixDok</title>
+    <script id="structuredData" type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "FlixDok",
+        "url": "https://flixdok.xyz/",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://flixdok.xyz/?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      }
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="site-header">
-        <a class="brand" href="#" aria-label="FlixDok home" data-action="home-link">
+        <a class="brand" href="/" aria-label="FlixDok home" data-action="home-link">
           <span class="brand-mark">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
           </span>
@@ -208,6 +244,6 @@
 
     <script src="./analytics.js?v=20260511-vercel-analytics" defer></script>
     <script src="/_vercel/insights/script.js" defer></script>
-    <script src="./app.js?v=20260511-search-engine" defer></script>
+    <script src="./app.js?v=20260511-seo" defer></script>
   </body>
 </html>
