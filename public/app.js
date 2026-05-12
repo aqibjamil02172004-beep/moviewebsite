@@ -30,13 +30,83 @@ const DEFAULT_PROFILE = {
   continueWatching: [],
 };
 
-const CATEGORY_VIEWS = new Set(["bollywood", "hollywood"]);
 const CATEGORY_PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 180;
 const SEARCH_CACHE_LIMIT = 260;
+const CONTENT_CACHE_KEY = "flixdok.content.v2";
+const CONTENT_CACHE_TTL_MS = 1000 * 60 * 60 * 12;
 const PLAYER_RECOVERY_COOLDOWN_MS = 12000;
 const DRAG_START_THRESHOLD = 10;
 const DRAG_CLICK_CANCEL_THRESHOLD = 18;
+
+const TMDB_GENRES = {
+  12: "Adventure",
+  14: "Fantasy",
+  16: "Animation",
+  18: "Drama",
+  27: "Horror",
+  28: "Action",
+  35: "Comedy",
+  36: "History",
+  53: "Thriller",
+  80: "Crime",
+  878: "Sci-Fi",
+  9648: "Mystery",
+  10749: "Romance",
+  10751: "Family",
+  10759: "Action",
+  10765: "Sci-Fi",
+};
+
+const STATIC_COLLECTIONS = {
+  bollywood: {
+    title: "Bollywood Movies",
+    subtitle: "High-energy Indian cinema ready to open",
+    path: "/category/bollywood/",
+    type: "movie",
+    region: "Bollywood",
+    endpoint: "/discover/movie",
+    params: { with_original_language: "hi", sort_by: "popularity.desc" },
+    pages: [1, 2, 3],
+  },
+  hollywood: {
+    title: "Hollywood Movies",
+    subtitle: "Big-screen favorites and modern blockbusters",
+    path: "/category/hollywood/",
+    type: "movie",
+    region: "Hollywood",
+    endpoint: "/discover/movie",
+    params: { with_original_language: "en", sort_by: "popularity.desc" },
+    pages: [1, 2, 3],
+  },
+  "genre-action": {
+    title: "Action Movies",
+    subtitle: "Fast, loud, and built for a big screen night",
+    path: "/genre/action/",
+    type: "movie",
+    genre: "Action",
+    endpoint: "/discover/movie",
+    params: { with_genres: "28", sort_by: "popularity.desc" },
+  },
+  "genre-comedy": {
+    title: "Comedy Movies",
+    subtitle: "Easy picks when you want something lighter",
+    path: "/genre/comedy/",
+    type: "movie",
+    genre: "Comedy",
+    endpoint: "/discover/movie",
+    params: { with_genres: "35", sort_by: "popularity.desc" },
+  },
+  "genre-anime": {
+    title: "Anime",
+    subtitle: "Animated worlds, cult favorites, and bingeable series",
+    path: "/genre/anime/",
+    type: "tv",
+    genre: "Animation",
+    endpoint: "/discover/tv",
+    params: { with_genres: "16", with_original_language: "ja", sort_by: "popularity.desc" },
+  },
+};
 
 const IMDB_TO_TMDB = {
   tt0903747: 1396,
@@ -633,6 +703,9 @@ const state = {
   categoryTab: "trending",
   categoryLimit: CATEGORY_PAGE_SIZE,
   searchCache: new Map(),
+  collectionLoading: {},
+  collectionLoaded: {},
+  contentHydratedAt: 0,
   activePlayerUrl: "",
   playerLoadStartedAt: 0,
   lastPlayerSignalAt: 0,
@@ -1312,13 +1385,57 @@ function cleanRoutePath(path) {
   return value.endsWith("/") ? value : `${value}/`;
 }
 
+function slugify(value) {
+  return normalizeSearch(value)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function titleSlug(item) {
+  const base = slugify(item?.title || item?.originalTitle || item?.providerTitle || "");
+  const year = item?.year ? `-${item.year}` : "";
+  return `${base || "title"}${year}`;
+}
+
 function titlePath(itemOrId) {
+  if (itemOrId && typeof itemOrId === "object" && itemOrId.title && itemOrId.type) {
+    return cleanRoutePath(`/${itemOrId.type === "tv" ? "tv" : "movie"}/${titleSlug(itemOrId)}`);
+  }
   const id = typeof itemOrId === "string" ? itemOrId : itemOrId?.id;
   return cleanRoutePath(`/title/${encodeURIComponent(id || "")}`);
 }
 
+function actorPath(name) {
+  return cleanRoutePath(`/actor/${slugify(name)}`);
+}
+
+function collectionDefinition(view = state.view) {
+  if (STATIC_COLLECTIONS[view]) return { key: view, ...STATIC_COLLECTIONS[view] };
+  if (view?.startsWith("actor-")) {
+    const slug = view.slice("actor-".length);
+    const label = titleCaseFromSlug(slug);
+    return {
+      key: view,
+      title: `${label} Movies & Shows`,
+      subtitle: `Filmography, popular titles, and recommendations connected to ${label}`,
+      path: `/actor/${slug}/`,
+      actorSlug: slug,
+      actorName: label,
+    };
+  }
+  return null;
+}
+
+function titleCaseFromSlug(slug) {
+  return String(slug || "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function categoryPath(category) {
-  return cleanRoutePath(`/category/${encodeURIComponent(category)}`);
+  return cleanRoutePath(collectionDefinition(category)?.path || `/category/${encodeURIComponent(category)}`);
 }
 
 function absoluteUrl(path = "/") {
@@ -1419,16 +1536,18 @@ function updateSeoMeta(item = state.selected) {
     keywords = seoKeywords([item.title, item.originalTitle, item.englishTitle, item.providerTitle, ...(item.aliases || []), media, item.year, ...(item.genres || []), ...(item.cast || []).slice(0, 6), APP_NAME]);
     structuredData = itemStructuredData(item, absoluteUrl(path));
   } else if (isCategoryView()) {
+    const collection = collectionDefinition();
     title = `${categoryTitle()} - ${APP_NAME}`;
-    description = compactDescription(`Browse ${categoryTitle().toLowerCase()} on ${APP_NAME} with ratings, posters, filters, and watchlist support.`, baseDescription);
+    description = compactDescription(`Browse ${categoryTitle().toLowerCase()} on ${APP_NAME} with ratings, posters, filters, recommendations, and watchlist support.`, baseDescription);
     path = categoryPath(state.view);
-    keywords = seoKeywords([categoryTitle(), state.view, "movies", "ratings", "posters", APP_NAME]);
+    keywords = seoKeywords([categoryTitle(), collection?.actorName, collection?.genre, collection?.region, "movies", "TV shows", "ratings", "posters", APP_NAME]);
     structuredData = {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
       name: categoryTitle(),
       url: absoluteUrl(path),
       description,
+      about: collection?.actorName ? { "@type": "Person", name: collection.actorName } : undefined,
     };
   } else if (state.view === "movie") {
     title = `Movies - ${APP_NAME}`;
@@ -1509,6 +1628,7 @@ function mergeItemData(existing, incoming) {
   ["genres", "cast", "seasons", "episodes"].forEach((key) => {
     merged[key] = incoming[key]?.length ? incoming[key] : existing[key] || [];
   });
+  merged.collections = uniqueValues([...(existing.collections || []), ...(incoming.collections || [])]);
   merged.aliases = uniqueValues([
     ...(existing.aliases || []),
     ...(incoming.aliases || []),
@@ -1548,11 +1668,16 @@ function mergeItems(...lists) {
 
 function getVisibleItems() {
   const query = state.query.trim();
-  const categoryRegion = categoryRegionForView();
+  const collection = collectionDefinition();
   let items = state.items;
 
-  if (categoryRegion) {
-    items = items.filter((item) => item.type === "movie" && item.region === categoryRegion);
+  if (query) {
+    items = items.filter((item) => queryMatchesItem(item, query));
+    return items;
+  }
+
+  if (collection) {
+    items = categoryBaseItems(collection);
   } else if (state.view === "watchlist") {
     const saved = new Set(state.profile.watchlist);
     items = items.filter((item) => saved.has(item.id));
@@ -1564,11 +1689,7 @@ function getVisibleItems() {
     items = items.filter((item) => item.type === state.filter);
   }
 
-  if (query) {
-    items = items.filter((item) => queryMatchesItem(item, query));
-  }
-
-  if (categoryRegion) {
+  if (collection) {
     const categorySearch = state.categoryQuery.trim();
     if (categorySearch) items = items.filter((item) => queryMatchesItem(item, categorySearch));
     if (state.categoryGenre !== "all") {
@@ -1581,31 +1702,38 @@ function getVisibleItems() {
 
 function itemMatchesActiveScope(item) {
   if (!item) return false;
-  const region = categoryRegionForView();
-  if (region) return item.type === "movie" && item.region === region;
+  const collection = collectionDefinition();
+  if (collection) return categoryItemMatches(item, collection);
   if (state.view === "movie" || state.view === "tv") return item.type === state.view;
   if (state.filter !== "all") return item.type === state.filter;
   return true;
 }
 
 function isCategoryView(view = state.view) {
-  return CATEGORY_VIEWS.has(view);
+  return Boolean(collectionDefinition(view));
 }
 
 function categoryRegionForView(view = state.view) {
-  if (view === "bollywood") return "Bollywood";
-  if (view === "hollywood") return "Hollywood";
-  return "";
+  return collectionDefinition(view)?.region || "";
 }
 
 function categoryTitle(view = state.view) {
-  const region = categoryRegionForView(view);
-  return region ? `${region} Movies` : "";
+  return collectionDefinition(view)?.title || "";
 }
 
-function categoryBaseItems(region = categoryRegionForView()) {
-  if (!region) return [];
-  return state.items.filter((item) => item.type === "movie" && item.region === region);
+function categoryItemMatches(item, collection = collectionDefinition()) {
+  if (!item || !collection) return false;
+  if (item.collections?.includes(collection.key)) return true;
+  if (collection.type && item.type !== collection.type) return false;
+  if (collection.region && item.region !== collection.region) return false;
+  if (collection.genre && !(item.genres || []).some((genre) => normalizeSearch(genre) === normalizeSearch(collection.genre))) return false;
+  if (collection.actorName && !(item.cast || []).some((person) => normalizeSearch(person) === normalizeSearch(collection.actorName))) return false;
+  return Boolean(collection.region || collection.genre || collection.actorName || collection.key);
+}
+
+function categoryBaseItems(collection = collectionDefinition()) {
+  if (!collection) return [];
+  return state.items.filter((item) => categoryItemMatches(item, collection));
 }
 
 function displayItems(items = getVisibleItems()) {
@@ -1677,7 +1805,8 @@ function render() {
   els.browseBlock.hidden = !showBrowse;
   els.hero.classList.toggle("is-search-mode", Boolean(state.query));
   els.hero.classList.toggle("is-poster-art", usesPosterArtwork(heroItem));
-  els.emptyState.hidden = visible.length > 0 || state.isSearching;
+  const loadingCollection = isCategoryView() && state.collectionLoading[state.view];
+  els.emptyState.hidden = visible.length > 0 || state.isSearching || loadingCollection;
   if (!visible.length) {
     els.emptyState.innerHTML = `<strong>No titles found</strong><span>Try another search or clear the current filter.</span>`;
   }
@@ -1692,7 +1821,7 @@ function renderHeadings(count) {
     bollywood: "Bollywood Movies",
     hollywood: "Hollywood Movies",
   };
-  els.sectionTitle.textContent = titleMap[state.view] || `Featured on ${APP_NAME}`;
+  els.sectionTitle.textContent = titleMap[state.view] || categoryTitle() || `Featured on ${APP_NAME}`;
   els.eyebrow.textContent = state.isSearching
     ? "Searching"
     : state.query
@@ -1784,6 +1913,15 @@ function transitionHeroTo(item) {
   }, 220);
 }
 
+function collectionItems(key, fallback = []) {
+  const tagged = state.items.filter((item) => item.collections?.includes(key));
+  return tagged.length ? tagged : fallback;
+}
+
+function genreItems(pattern, type = "") {
+  return state.items.filter((item) => (!type || item.type === type) && (item.genres || []).some((genre) => pattern.test(genre)));
+}
+
 function renderRails(items) {
   if (!items.length) {
     els.railArea.innerHTML = "";
@@ -1792,9 +1930,18 @@ function renderRails(items) {
 
   const allItems = sortedByScore(state.items);
   const movieItems = state.items.filter((item) => item.type === "movie");
+  const tvItems = state.items.filter((item) => item.type === "tv");
   const hollywoodItems = sortedByScore(movieItems.filter((item) => item.region === "Hollywood"));
   const bollywoodItems = sortedByScore(movieItems.filter((item) => item.region === "Bollywood"));
   const sciFiItems = sortedByScore(state.items.filter((item) => (item.genres || []).some((genre) => /sci-fi|mystery|thriller/i.test(genre))));
+  const actionItems = sortedByScore(collectionItems("genre-action", genreItems(/action|adventure|thriller/i, "movie")));
+  const comedyItems = sortedByScore(collectionItems("genre-comedy", genreItems(/comedy/i, "movie")));
+  const animeItems = sortedByScore(collectionItems("genre-anime", genreItems(/animation|anime/i)));
+  const trendingItems = sortedByScore([...collectionItems("trending-movies"), ...collectionItems("trending-tv")]);
+  const latestMovies = sortedByYear(collectionItems("latest-movies", movieItems));
+  const latestTv = sortedByYear(collectionItems("latest-tv", tvItems));
+  const recentlyAdded = sortedByYear(collectionItems("recently-added", state.items));
+  const topRatedItems = sortedByScore([...collectionItems("top-rated-movies"), ...collectionItems("top-rated-tv")]);
   const watchlistItems = state.items.filter((item) => isWatchlisted(item));
   const sections = [
     {
@@ -1806,10 +1953,39 @@ function renderRails(items) {
       ranked: true,
     },
     {
+      key: "trending-today",
+      title: "Trending Today",
+      subtitle: "Fresh titles people are opening right now",
+      items: (trendingItems.length ? trendingItems : sortedByYear(items)).slice(0, 18),
+      card: "wide",
+    },
+    {
+      key: "recently-added",
+      title: "Recently Added",
+      subtitle: "Newer titles and fresh discoveries from the live catalog",
+      items: recentlyAdded.slice(0, 18),
+      card: "poster",
+    },
+    {
+      key: "latest-movies",
+      title: "Latest Movies",
+      subtitle: "Recent films pulled into the library",
+      items: latestMovies.slice(0, 18),
+      card: "wide",
+      category: "hollywood",
+    },
+    {
+      key: "latest-tv",
+      title: "Latest TV & New Episodes",
+      subtitle: "Shows with recent seasons and episode tracking",
+      items: latestTv.slice(0, 18),
+      card: "wide",
+    },
+    {
       key: "bollywood",
       title: "Bollywood Movies",
       subtitle: "High-energy Indian cinema ready to open",
-      items: bollywoodItems.slice(0, 16),
+      items: sortedByScore(collectionItems("bollywood", bollywoodItems)).slice(0, 18),
       card: "poster",
       category: "bollywood",
     },
@@ -1817,36 +1993,53 @@ function renderRails(items) {
       key: "hollywood",
       title: "Hollywood Movies",
       subtitle: "Big-screen favorites and modern blockbusters",
-      items: hollywoodItems.slice(0, 16),
+      items: sortedByScore(collectionItems("hollywood", hollywoodItems)).slice(0, 18),
       card: "wide",
       category: "hollywood",
     },
     {
-      key: "trending",
-      title: "Trending Movies",
-      subtitle: "Recent films ready to open",
-      items: sortedByYear(state.items.filter((item) => item.type === "movie")).slice(0, 12),
+      key: "action",
+      title: "Action Hits",
+      subtitle: "High-impact picks, chases, missions, and spectacle",
+      items: actionItems.slice(0, 18),
+      card: "poster",
+      category: "genre-action",
+    },
+    {
+      key: "comedy",
+      title: "Comedy Picks",
+      subtitle: "Lighter movies for an easy night",
+      items: comedyItems.slice(0, 18),
+      card: "poster",
+      category: "genre-comedy",
+    },
+    {
+      key: "anime",
+      title: "Anime & Animation",
+      subtitle: "Animated stories with strong binge energy",
+      items: animeItems.slice(0, 18),
       card: "wide",
+      category: "genre-anime",
     },
     {
       key: "binge-tv",
       title: "Binge-Worthy TV",
       subtitle: "Shows with seasons and episode selection",
-      items: sortedByScore(state.items.filter((item) => item.type === "tv")).slice(0, 12),
+      items: sortedByScore(tvItems).slice(0, 18),
       card: "wide",
     },
     {
       key: "mind-bending",
       title: "Mind-Bending Picks",
       subtitle: "Sci-fi, mystery, and late-night rabbit holes",
-      items: sciFiItems.slice(0, 12),
+      items: sciFiItems.slice(0, 18),
       card: "poster",
     },
     {
       key: "top-rated",
       title: "Top Rated",
       subtitle: "The strongest picks across the whole catalog",
-      items: allItems.slice(0, 12),
+      items: (topRatedItems.length ? topRatedItems : allItems).slice(0, 18),
       card: "compact",
     },
   ];
@@ -1938,7 +2131,7 @@ function renderMediaCard(item, opts = {}) {
 function renderGrid(items) {
   const isSearch = Boolean(state.query);
   els.posterGrid.classList.toggle("search-results", isSearch);
-  if (state.isSearching && !items.length) {
+  if ((state.isSearching || (isCategoryView() && state.collectionLoading[state.view])) && !items.length) {
     els.posterGrid.innerHTML = renderSkeletonCards(isSearch ? 4 : 8);
     return;
   }
@@ -1989,8 +2182,9 @@ function renderCategoryTools(items) {
     return;
   }
 
+  const collection = collectionDefinition();
   const genreMap = new Map();
-  categoryBaseItems()
+  categoryBaseItems(collection)
     .flatMap((item) => item.genres || [])
     .filter(Boolean)
     .forEach((genre) => genreMap.set(normalizeSearch(genre), genre));
@@ -2018,7 +2212,7 @@ function renderCategoryTools(items) {
     <div class="category-fields">
       <label>
         <span>Search this page</span>
-        <input id="categorySearch" value="${safeText(state.categoryQuery)}" placeholder="Search ${safeText(categoryRegionForView())} movies" />
+        <input id="categorySearch" value="${safeText(state.categoryQuery)}" placeholder="Search ${safeText(collection?.title || "this collection")}" />
       </label>
       <label>
         <span>Genre</span>
@@ -2070,6 +2264,54 @@ function renderSkeletonCards(count = 8) {
   ).join("");
 }
 
+function recommendationItems(item, limit = 12, options = {}) {
+  if (!item) return [];
+  const itemGenreKeys = new Set((item.genres || []).map(normalizeSearch));
+  const itemActors = new Set((item.cast || []).slice(0, 8).map(normalizeSearch));
+  const preferredType = options.sameType ? item.type : "";
+  return state.items
+    .filter((candidate) => candidate.id !== item.id)
+    .map((candidate) => {
+      const genreOverlap = (candidate.genres || []).filter((genre) => itemGenreKeys.has(normalizeSearch(genre))).length;
+      const actorOverlap = (candidate.cast || []).filter((person) => itemActors.has(normalizeSearch(person))).length;
+      const typeBoost = candidate.type === item.type ? 2 : 0;
+      const regionBoost = candidate.region && candidate.region === item.region ? 1.4 : 0;
+      const collectionBoost = (candidate.collections || []).some((key) => (item.collections || []).includes(key)) ? 1 : 0;
+      const typePenalty = preferredType && candidate.type !== preferredType ? -10 : 0;
+      return {
+        item: candidate,
+        score: scoreValue(candidate) + genreOverlap * 3 + actorOverlap * 2.2 + typeBoost + regionBoost + collectionBoost + typePenalty,
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || Number(b.item.year || 0) - Number(a.item.year || 0))
+    .slice(0, limit)
+    .map((entry) => entry.item);
+}
+
+function genreCollectionKey(genre) {
+  const key = normalizeSearch(genre);
+  if (key === "action" || key === "adventure" || key === "thriller") return "genre-action";
+  if (key === "comedy") return "genre-comedy";
+  if (key === "animation" || key === "anime") return "genre-anime";
+  return "";
+}
+
+function detailFactList(item, seasonCount, episodeCount) {
+  return [
+    ["Type", mediaLabel(item.type)],
+    ["Released", itemYear(item)],
+    ["Runtime", item.runtime],
+    ["Genres", (item.genres || []).slice(0, 4).join(", ")],
+    ["Rating", scoreLabel(item)],
+    item.type === "tv" ? ["Episodes", `${episodeCount} episodes across ${seasonCount} seasons`] : null,
+  ].filter((entry) => entry && entry[1]);
+}
+
+function trailerSearchUrl(item) {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.title} ${item.year || ""} official trailer`)}`;
+}
+
 function renderDetail(item) {
   if (!item) {
     els.detailPanel.innerHTML = `<div class="panel-empty">Select a title</div>`;
@@ -2090,16 +2332,24 @@ function renderDetail(item) {
   const seasonCount = episodeModel.length;
   const episodeCount = episodeModel.reduce((total, entry) => total + entry.episodes.length, 0);
   const isLoadingEpisodes = state.detailLoadingId === item.id && item.type === "tv";
-  const people = (item.cast || []).slice(0, 8);
+  const people = (item.cast || []).slice(0, 10);
   const ratings = [
     item.rating ? `TMDB ${Number(item.rating).toFixed(1)}` : "",
     item.imdbRating ? `IMDb ${Number(item.imdbRating).toFixed(1)}` : "",
     item.omdbRating ? `OMDb ${item.omdbRating}` : "",
   ].filter(Boolean);
   const heroImage = usesPosterArtwork(item) ? item.posterUrl : item.backdropUrl || item.posterUrl;
-  const similar = sortedByScore(state.items)
-    .filter((candidate) => candidate.id !== item.id && (candidate.type === item.type || (candidate.genres || []).some((genre) => (item.genres || []).includes(genre))))
-    .slice(0, 10);
+  const similar = recommendationItems(item, 12);
+  const sameTypeRecommendations = recommendationItems(item, 12, { sameType: true });
+  const facts = detailFactList(item, seasonCount, episodeCount);
+  const linkedGenres = (item.genres || [])
+    .map((genre) => ({ genre, key: genreCollectionKey(genre) }))
+    .filter((entry) => entry.key)
+    .slice(0, 3);
+  const titlePhrase = `${item.title}${item.year ? ` (${item.year})` : ""}`;
+  const overviewText =
+    item.overview ||
+    `${titlePhrase} is available in the FlixDok catalog with ratings, posters, watchlist support, and ${item.type === "tv" ? "episode details" : "movie details"}.`;
 
   els.detailPanel.style.setProperty("--detail-image", `url("${heroImage}")`);
   els.detailPanel.innerHTML = `
@@ -2117,12 +2367,16 @@ function renderDetail(item) {
           ${item.runtime ? `<span>${safeText(item.runtime)}</span>` : ""}
           ${(item.genres || []).slice(0, 3).map((genre) => `<span>${safeText(genre)}</span>`).join("")}
         </div>
-        <p class="overview">${safeText(item.overview || "No overview is available yet.")}</p>
+        <p class="overview">${safeText(overviewText)}</p>
         <div class="hero-actions">
           <button class="primary-button" type="button" data-action="play" data-id="${safeText(item.id)}" ${canAttemptPlay ? "" : "disabled"}>
             <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             ${canPlay || canAttemptPlay ? (isResolvingProvider ? "Checking..." : "Play") : "Not Available"}
           </button>
+          <a class="secondary-button" href="${safeText(trailerSearchUrl(item))}" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><path d="m10 9 5 3-5 3z"/></svg>
+            Trailer
+          </a>
           <button class="secondary-button" type="button" data-action="toggle-watchlist" data-id="${safeText(item.id)}">
             <svg viewBox="0 0 24 24"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-3.5L6 21z"/></svg>
             ${safeText(watchText)}
@@ -2133,6 +2387,37 @@ function renderDetail(item) {
         ${item.posterUrl ? `<img src="${safeText(item.posterUrl)}" alt="${safeText(item.title)} poster" />` : ""}
       </aside>
     </section>
+    <section class="detail-section detail-copy-grid">
+      <article class="detail-copy-card">
+        <p class="kicker">About ${safeText(mediaLabel(item.type))}</p>
+        <h2>${safeText(titlePhrase)}</h2>
+        <p>${safeText(overviewText)}</p>
+        <p>${safeText(`${APP_NAME} tracks ${item.type === "tv" ? "season progress, episode selection" : "watch progress"}, ratings, cast details, similar titles, and watchlist status locally in your browser.`)}</p>
+      </article>
+      <aside class="detail-facts" aria-label="${safeText(item.title)} facts">
+        ${facts.map(([label, value]) => `<span><b>${safeText(label)}</b><strong>${safeText(value)}</strong></span>`).join("")}
+      </aside>
+    </section>
+    ${
+      linkedGenres.length
+        ? `
+      <section class="detail-section">
+        <div class="section-heading compact"><h2>Explore by genre</h2></div>
+        <div class="detail-link-list">
+          ${linkedGenres
+            .map(
+              ({ genre, key }) => `
+              <a href="${safeText(categoryPath(key))}" data-action="category-page" data-category="${safeText(key)}">
+                ${safeText(genre)}
+              </a>
+            `,
+            )
+            .join("")}
+        </div>
+      </section>
+    `
+        : ""
+    }
     ${
       item.type === "tv"
         ? `
@@ -2183,7 +2468,15 @@ function renderDetail(item) {
         ? `
       <section class="detail-section">
         <div class="section-heading compact"><h2>Cast</h2></div>
-        <div class="cast-list">${people.map((person) => `<span>${safeText(person)}</span>`).join("")}</div>
+        <div class="cast-list">${people
+          .map(
+            (person) => `
+            <a href="${safeText(actorPath(person))}" data-action="category-page" data-category="actor-${safeText(slugify(person))}">
+              ${safeText(person)}
+            </a>
+          `,
+          )
+          .join("")}</div>
       </section>
     `
         : ""
@@ -2194,6 +2487,16 @@ function renderDetail(item) {
       <section class="detail-section">
         <div class="section-heading compact"><h2>More like this</h2></div>
         <div class="rail-track is-wide">${similar.map((candidate) => renderMediaCard(candidate, { wide: true })).join("")}</div>
+      </section>
+    `
+        : ""
+    }
+    ${
+      sameTypeRecommendations.length
+        ? `
+      <section class="detail-section">
+        <div class="section-heading compact"><h2>Because you watched ${safeText(item.title)}</h2></div>
+        <div class="rail-track">${sameTypeRecommendations.map((candidate) => renderMediaCard(candidate, { compact: true })).join("")}</div>
       </section>
     `
         : ""
@@ -2357,6 +2660,22 @@ function findItem(id) {
     SEED_TITLES.map(normalizeSeed).find((item) => item.id === id) ||
     null
   );
+}
+
+function slugCandidates(item) {
+  return uniqueValues([
+    titleSlug(item),
+    slugify(item.title),
+    slugify(item.originalTitle),
+    slugify(item.providerTitle),
+    ...(item.aliases || []).map((alias) => slugify(alias)),
+  ]);
+}
+
+function findItemBySlug(type, slug) {
+  const mediaType = type === "tv" ? "tv" : "movie";
+  const allItems = mergeItems(state.items, SEED_TITLES.map(normalizeSeed), Array.from(state.searchCache.values()));
+  return allItems.find((item) => item.type === mediaType && slugCandidates(item).includes(slug)) || null;
 }
 
 function isWatchlisted(item) {
@@ -2647,8 +2966,148 @@ function handlePlayerMessage(event) {
   renderContinue();
 }
 
+function loadContentCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(CONTENT_CACHE_KEY) || "null");
+    if (!cached?.savedAt || !Array.isArray(cached.items)) return [];
+    if (Date.now() - cached.savedAt > CONTENT_CACHE_TTL_MS) return [];
+    return cached.items;
+  } catch {
+    return [];
+  }
+}
+
+function saveContentCache(items) {
+  try {
+    localStorage.setItem(
+      CONTENT_CACHE_KEY,
+      JSON.stringify({
+        savedAt: Date.now(),
+        items: items.slice(0, 260),
+      }),
+    );
+  } catch {
+    // Content freshness should never block the app if storage is unavailable.
+  }
+}
+
+async function proxyFetch(path, params = {}) {
+  const url = new URL(`${TMDB_PROXY}${path}`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, value);
+  });
+  const response = await fetch(url.toString());
+  if (!response.ok) throw new Error(`Proxy request failed: ${response.status}`);
+  return response.json();
+}
+
+function normalizeFeedItem(raw, feed = {}) {
+  const mediaType = feed.type || raw.media_type;
+  if (mediaType !== "movie" && mediaType !== "tv") return null;
+  const item = normalizeTmdbItem(raw, mediaType);
+  return {
+    ...item,
+    collections: uniqueValues([...(item.collections || []), feed.key, ...(feed.collections || [])]),
+    genres: uniqueValues([...(item.genres || []), feed.genre]),
+    region: feed.region || item.region,
+    cast: feed.actorName ? uniqueValues([...(item.cast || []), feed.actorName]) : item.cast || [],
+  };
+}
+
+async function fetchProxyFeed(feed) {
+  const pages = feed.pages || [1];
+  const payloads = await Promise.allSettled(pages.map((page) => proxyFetch(feed.endpoint, { ...(feed.params || {}), page: String(page) })));
+  return payloads
+    .flatMap((result) => (result.status === "fulfilled" ? result.value.results || result.value.cast || [] : []))
+    .map((raw) => normalizeFeedItem(raw, feed))
+    .filter(Boolean);
+}
+
+const HOME_FEEDS = [
+  { key: "trending-movies", endpoint: "/trending/movie/day", type: "movie", collections: ["recently-added"], pages: [1, 2] },
+  { key: "trending-tv", endpoint: "/trending/tv/day", type: "tv", collections: ["latest-tv", "recently-added"], pages: [1, 2] },
+  { key: "latest-movies", endpoint: "/movie/now_playing", type: "movie", collections: ["recently-added"], pages: [1, 2] },
+  { key: "latest-tv", endpoint: "/tv/on_the_air", type: "tv", collections: ["recently-added"], pages: [1] },
+  { key: "bollywood", endpoint: "/discover/movie", type: "movie", region: "Bollywood", params: { with_original_language: "hi", sort_by: "popularity.desc" }, pages: [1, 2] },
+  { key: "hollywood", endpoint: "/discover/movie", type: "movie", region: "Hollywood", params: { with_original_language: "en", sort_by: "popularity.desc" }, pages: [1, 2] },
+  { key: "genre-action", endpoint: "/discover/movie", type: "movie", genre: "Action", params: { with_genres: "28", sort_by: "popularity.desc" }, pages: [1, 2] },
+  { key: "genre-comedy", endpoint: "/discover/movie", type: "movie", genre: "Comedy", params: { with_genres: "35", sort_by: "popularity.desc" }, pages: [1, 2] },
+  { key: "genre-anime", endpoint: "/discover/tv", type: "tv", genre: "Animation", params: { with_genres: "16", with_original_language: "ja", sort_by: "popularity.desc" }, pages: [1, 2] },
+  { key: "top-rated-movies", endpoint: "/movie/top_rated", type: "movie", pages: [1] },
+  { key: "top-rated-tv", endpoint: "/tv/top_rated", type: "tv", pages: [1] },
+];
+
+async function loadHomeProxyContent() {
+  const results = await Promise.allSettled(HOME_FEEDS.map(fetchProxyFeed));
+  return mergeItems(...results.map((result) => (result.status === "fulfilled" ? result.value : [])));
+}
+
+async function loadActorCollection(collection) {
+  const personSearch = await proxyFetch("/search/person", { query: collection.actorName, page: "1" });
+  const person = (personSearch.results || []).find((entry) => normalizeSearch(entry.name) === normalizeSearch(collection.actorName)) || personSearch.results?.[0];
+  if (!person?.id) return [];
+  const credits = await proxyFetch(`/person/${person.id}/combined_credits`);
+  return (credits.cast || [])
+    .filter((item) => item.media_type === "movie" || item.media_type === "tv")
+    .sort((a, b) => Number(b.popularity || 0) - Number(a.popularity || 0))
+    .slice(0, 60)
+    .map((raw) =>
+      normalizeFeedItem(raw, {
+        key: collection.key,
+        actorName: collection.actorName,
+      }),
+    )
+    .filter(Boolean);
+}
+
+async function loadCollectionContent(view) {
+  const collection = collectionDefinition(view);
+  if (!collection) return [];
+  if (collection.actorName) return loadActorCollection(collection);
+  if (collection.endpoint) return fetchProxyFeed(collection);
+  return [];
+}
+
+function ensureCollectionLoaded(view = state.view) {
+  const collection = collectionDefinition(view);
+  if (!collection || state.collectionLoaded[view] || state.collectionLoading[view]) return;
+  if (!collection.endpoint && !collection.actorName) return;
+  state.collectionLoading[view] = true;
+  loadCollectionContent(view)
+    .then((items) => {
+      if (items.length) state.items = mergeItems(state.items, items);
+      state.collectionLoaded[view] = true;
+    })
+    .catch((error) => console.warn("Collection load failed", error))
+    .finally(() => {
+      state.collectionLoading[view] = false;
+      if (state.view === view || state.page === "detail") render();
+    });
+}
+
 async function hydrateHome() {
-  state.items = SEED_TITLES.map(normalizeSeed);
+  const selectedId = state.selected?.id;
+  const seedItems = SEED_TITLES.map(normalizeSeed);
+  const cached = loadContentCache();
+  state.items = mergeItems(seedItems, cached, state.items);
+  if (cached.length) {
+    state.selected = state.page === "detail" ? findItem(selectedId) || state.selected : featuredItem(state.items) || state.items[0];
+    render();
+  }
+
+  try {
+    const liveItems = await loadHomeProxyContent();
+    if (liveItems.length) {
+      state.items = mergeItems(seedItems, liveItems, state.items);
+      state.contentHydratedAt = Date.now();
+      saveContentCache(liveItems);
+      state.selected = state.page === "detail" ? findItem(selectedId) || state.selected : featuredItem(state.items) || state.items[0];
+      render();
+    }
+  } catch (error) {
+    console.warn("Proxy home load failed", error);
+  }
+
   if (!state.profile.tmdbKey) {
     render();
     enrichRatings(state.items);
@@ -2668,7 +3127,7 @@ async function hydrateHome() {
       ...(trendingTv.results || []).map((item) => normalizeTmdbItem(item, "tv")),
       ...(trendingTvPage2.results || []).map((item) => normalizeTmdbItem(item, "tv")),
     ];
-    state.items = mergeItems(SEED_TITLES.map(normalizeSeed), liveItems);
+    state.items = mergeItems(seedItems, liveItems, state.items);
     state.selected = state.page === "detail" ? findItem(state.selected?.id) || state.selected : state.items[0];
     render();
     enrichRatings(state.items);
@@ -2902,13 +3361,14 @@ function normalizeTmdbItem(item, explicitType) {
     originalLanguage: item.original_language || "",
     aliases: uniqueValues([title, providerTitle, originalTitle]),
     year: date ? date.slice(0, 4) : "",
-    genres: [],
+    genres: uniqueValues((item.genre_ids || []).map((id) => TMDB_GENRES[id])),
     rating: item.vote_average || null,
     poster: item.poster_path,
     backdrop: item.backdrop_path,
     posterUrl: imageUrl(item.poster_path, "w500"),
     backdropUrl: imageUrl(item.backdrop_path || item.poster_path, "original"),
     overview: item.overview || "",
+    region: type === "movie" && item.original_language === "hi" ? "Bollywood" : type === "movie" ? "Hollywood" : "TV",
     source: "TMDB",
   };
 }
@@ -3267,7 +3727,7 @@ async function enrichSelected(item) {
       item = upsertResolvedItem(item, resolved);
       selectedId = item.id;
       state.detailLoadingId = selectedId;
-      if (oldId !== item.id && (location.hash === `#/title/${encodeURIComponent(oldId)}` || cleanRoutePath(location.pathname) === titlePath(oldId))) {
+      if (oldId !== item.id && (location.hash === `#/title/${encodeURIComponent(oldId)}` || /^\/(title|movie|tv)\//.test(location.pathname))) {
         history.replaceState(history.state || { page: "detail" }, "", titlePath(item));
       }
       if (shouldRenderResolved) render();
@@ -3437,7 +3897,7 @@ function closeTitle(push = true) {
   state.page = "home";
   scrollToTop("auto");
   render();
-  if (push && (location.hash.startsWith("#/title/") || location.pathname.startsWith("/title/"))) {
+  if (push && (location.hash.startsWith("#/title/") || /^\/(title|movie|tv)\//.test(location.pathname))) {
     const returnPath = history.state?.returnPath;
     if (returnPath && returnPath !== "/") {
       history.pushState({ page: "category" }, "", returnPath);
@@ -3473,6 +3933,54 @@ function routePlaceholder(id) {
     source: APP_NAME,
     providerChecked: false,
   };
+}
+
+function slugPlaceholder(type, slug) {
+  const title = titleCaseFromSlug(String(slug || "").replace(/-\d{4}$/, ""));
+  return {
+    id: `${type}-${slug}`,
+    type,
+    title: title || "Loading title...",
+    originalTitle: title || "Loading title...",
+    aliases: [title].filter(Boolean),
+    year: String(slug || "").match(/-(\d{4})$/)?.[1] || "",
+    genres: [],
+    rating: null,
+    runtime: "",
+    posterUrl: "",
+    backdropUrl: "",
+    overview: "Loading this page from the live catalog.",
+    source: APP_NAME,
+    providerChecked: false,
+  };
+}
+
+function queryFromTitleSlug(slug) {
+  return String(slug || "")
+    .replace(/-\d{4}$/, "")
+    .replace(/-/g, " ")
+    .trim();
+}
+
+async function resolveSlugItem(type, slug) {
+  const query = queryFromTitleSlug(slug);
+  if (!query) return null;
+  const year = String(slug || "").match(/-(\d{4})$/)?.[1] || "";
+  const probe = { type, title: query, originalTitle: query, aliases: [query], year };
+  try {
+    const url = new URL(`${TMDB_PROXY}/search/${type}`);
+    url.searchParams.set("query", query);
+    const response = await fetch(url.toString());
+    if (!response.ok) return null;
+    const data = await response.json();
+    const match = pickTitleSearchMatch(probe, data.results || []);
+    if (!match) return null;
+    const normalized = normalizeProxyMatch(probe, match);
+    return (await fetchProxyDetail(normalized.type, providerId(normalized))) || normalized;
+  } catch (error) {
+    console.warn("Slug title lookup failed", error);
+    return null;
+  }
 }
 
 async function resolveRouteItem(id, ignoreExisting = false) {
@@ -3536,6 +4044,39 @@ async function openRouteTitle(id) {
   enrichSelected(state.selected);
 }
 
+async function openSlugTitle(type, slug) {
+  const token = ++state.routeToken;
+  const placeholder = slugPlaceholder(type, slug);
+  state.page = "detail";
+  state.selected = placeholder;
+  state.detailLoadingId = placeholder.id;
+  scrollToTop("auto");
+  render();
+
+  const resolved = await resolveSlugItem(type, slug);
+  if (token !== state.routeToken) return;
+  state.detailLoadingId = "";
+
+  if (!resolved) {
+    state.selected = {
+      ...placeholder,
+      title: "Title not found",
+      overview: "This page could not be matched with the live catalog.",
+      providerChecked: true,
+    };
+    render();
+    return;
+  }
+
+  state.items = mergeItems(state.items, [resolved]);
+  state.selected = findItem(resolved.id) || resolved;
+  if (cleanRoutePath(location.pathname) !== titlePath(resolved)) {
+    history.replaceState(history.state || { page: "detail" }, "", titlePath(resolved));
+  }
+  render();
+  enrichSelected(state.selected);
+}
+
 function routeFromLocation() {
   const categoryMatch = location.hash.match(/^#\/category\/(bollywood|hollywood)$/);
   if (categoryMatch) return { type: "category", category: categoryMatch[1] };
@@ -3545,8 +4086,14 @@ function routeFromLocation() {
   const path = cleanRoutePath(location.pathname);
   const categoryPathMatch = path.match(/^\/category\/(bollywood|hollywood)\/$/);
   if (categoryPathMatch) return { type: "category", category: categoryPathMatch[1] };
+  const genrePathMatch = path.match(/^\/genre\/([^/]+)\/$/);
+  if (genrePathMatch) return { type: "category", category: `genre-${decodeURIComponent(genrePathMatch[1])}` };
+  const actorPathMatch = path.match(/^\/actor\/([^/]+)\/$/);
+  if (actorPathMatch) return { type: "category", category: `actor-${decodeURIComponent(actorPathMatch[1])}` };
   const titlePathMatch = path.match(/^\/title\/([^/]+)\/$/);
   if (titlePathMatch) return { type: "title", id: decodeURIComponent(titlePathMatch[1]) };
+  const slugTitleMatch = path.match(/^\/(movie|tv)\/([^/]+)\/$/);
+  if (slugTitleMatch) return { type: "title-slug", mediaType: slugTitleMatch[1], slug: decodeURIComponent(slugTitleMatch[2]) };
   if (path === "/movies/") return { type: "section", view: "movie", filter: "movie" };
   if (path === "/tv-shows/") return { type: "section", view: "tv", filter: "tv" };
   if (path === "/watchlist/") return { type: "section", view: "watchlist", filter: "all" };
@@ -3568,6 +4115,13 @@ function restoreRouteFromLocation() {
     state.selected = displayItems()[0] || state.items[0] || null;
     render();
     enrichSelected(state.selected);
+    return true;
+  }
+
+  if (route.type === "title-slug") {
+    const item = findItemBySlug(route.mediaType, route.slug);
+    if (item) openTitle(item, false);
+    else openSlugTitle(route.mediaType, route.slug);
     return true;
   }
 
@@ -3619,11 +4173,12 @@ function applySection(view, filter = view === "home" ? "all" : view) {
 }
 
 function openCategoryPage(category, push = true) {
-  if (!CATEGORY_VIEWS.has(category)) return;
+  const collection = collectionDefinition(category);
+  if (!collection) return;
   cancelActiveSearch();
   state.page = "home";
   state.view = category;
-  state.filter = "movie";
+  state.filter = collection.type || "all";
   clearQueryValue();
   resetCategoryState();
   state.selected = displayItems()[0] || state.items[0] || null;
@@ -3631,6 +4186,7 @@ function openCategoryPage(category, push = true) {
   setActiveFilter();
   scrollToTop();
   render();
+  ensureCollectionLoaded(category);
   enrichSelected(state.selected);
   if (push) history.pushState({ page: "category", category }, "", categoryPath(category));
 }

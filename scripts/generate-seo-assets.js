@@ -41,11 +41,19 @@ function normalizeSearch(value) {
     .trim();
 }
 
-function itemId(item) {
-  const tmdbId = numericTmdbId(item.tmdbId);
-  if (tmdbId) return `${item.type}-${tmdbId}`;
-  if (item.imdbId) return `${item.type}-${item.imdbId}`;
-  return `${item.type}-${normalizeSearch(item.title).replace(/\s+/g, "-")}-${item.year || "unknown"}`;
+function slugify(value) {
+  return normalizeSearch(value)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function titlePath(item) {
+  const title = slugify(`${item.title || item.originalTitle || "title"} ${item.year || ""}`) || "title";
+  return `/${item.type === "tv" ? "tv" : "movie"}/${title}/`;
+}
+
+function actorPath(name) {
+  return `/actor/${slugify(name)}/`;
 }
 
 function xmlEscape(value) {
@@ -74,11 +82,24 @@ function writeSitemap(items) {
     { loc: "/tv-shows/", priority: "0.8", changefreq: "daily" },
     { loc: "/category/bollywood/", priority: "0.8", changefreq: "daily" },
     { loc: "/category/hollywood/", priority: "0.8", changefreq: "daily" },
+    { loc: "/genre/action/", priority: "0.8", changefreq: "daily" },
+    { loc: "/genre/comedy/", priority: "0.8", changefreq: "daily" },
+    { loc: "/genre/anime/", priority: "0.8", changefreq: "daily" },
+    { loc: "/actor/tom-cruise/", priority: "0.7", changefreq: "weekly" },
     ...items.map((item) => ({
-      loc: `/title/${encodeURIComponent(itemId(item))}/`,
+      loc: titlePath(item),
       priority: "0.7",
       changefreq: "weekly",
     })),
+    ...Array.from(
+      new Set(
+        items
+          .flatMap((item) => item.cast || [])
+          .slice(0, 25)
+          .map(actorPath)
+          .filter((route) => route !== "/actor//"),
+      ),
+    ).map((loc) => ({ loc, priority: "0.6", changefreq: "weekly" })),
   ];
 
   const urls = routes
@@ -105,4 +126,4 @@ ${urls}
 const items = extractSeedTitles();
 writeRobots();
 writeSitemap(items);
-console.log(`Generated robots.txt and sitemap.xml with ${items.length} title URLs.`);
+console.log(`Generated robots.txt and sitemap.xml with ${items.length} title URLs plus collection pages.`);

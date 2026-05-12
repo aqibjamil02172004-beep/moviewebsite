@@ -1441,6 +1441,101 @@ svg {
   padding: 0 var(--page-pad) 44px;
 }
 
+.detail-copy-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.detail-copy-card,
+.detail-facts {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.2);
+}
+
+.detail-copy-card {
+  padding: clamp(18px, 3vw, 28px);
+}
+
+.detail-copy-card h2 {
+  margin: 4px 0 10px;
+  font-size: clamp(1.35rem, 2.5vw, 2.3rem);
+}
+
+.detail-copy-card p {
+  max-width: 78ch;
+  margin: 0 0 12px;
+  color: rgba(247, 247, 242, 0.78);
+  line-height: 1.65;
+}
+
+.detail-copy-card p:last-child {
+  margin-bottom: 0;
+}
+
+.detail-facts {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.detail-facts span {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.detail-facts b {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.detail-facts strong {
+  font-size: 0.95rem;
+}
+
+.detail-link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.detail-link-list a,
+.cast-list a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: rgba(247, 247, 242, 0.84);
+  background: rgba(255, 255, 255, 0.05);
+  text-decoration: none;
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.detail-link-list a {
+  padding: 0 13px;
+  font-weight: 850;
+}
+
+.detail-link-list a:hover,
+.cast-list a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(216, 177, 95, 0.55);
+  color: #111114;
+  background: var(--accent);
+}
+
 .episode-summary {
   margin: -4px 0 14px;
   color: rgba(247, 247, 242, 0.74);
@@ -1554,7 +1649,8 @@ select option {
   gap: 8px;
 }
 
-.cast-list span {
+.cast-list span,
+.cast-list a {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1977,6 +2073,10 @@ select option {
 
   .episode-grid,
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-copy-grid {
     grid-template-columns: 1fr;
   }
 

@@ -2,229 +2,253 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://flixdok.xyz/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://flixdok.xyz/movies/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://flixdok.xyz/tv-shows/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://flixdok.xyz/category/bollywood/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://flixdok.xyz/category/hollywood/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-693134/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/genre/action/</loc>
+    <lastmod>2026-05-12</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://flixdok.xyz/genre/comedy/</loc>
+    <lastmod>2026-05-12</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://flixdok.xyz/genre/anime/</loc>
+    <lastmod>2026-05-12</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://flixdok.xyz/actor/tom-cruise/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-872585/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/dune-part-two-2024/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-414906/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/oppenheimer-2023/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-157336/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/the-batman-2022/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-569094/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/interstellar-2014/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-361743/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/spider-man-across-the-spider-verse-2023/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-155/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/top-gun-maverick-2022/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-545611/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/the-dark-knight-2008/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-579974/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/everything-everywhere-all-at-once-2022/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-872906/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/rrr-2022/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-587412/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/jawan-2023/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-864692/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/k-g-f-chapter-2-2022/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-360814/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/pathaan-2023/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-20453/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/dangal-2016/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-297222/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/3-idiots-2009/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-348892/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/pk-2014/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-496331/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/bajrangi-bhaijaan-2015/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-534780/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/brahmastra-part-one-shiva-2022/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-352173/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/andhadhun-2018/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-61202/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/drishyam-2015/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-27205/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/zindagi-na-milegi-dobara-2011/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-603/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/inception-2010/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-76600/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/the-matrix-1999/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-550/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/avatar-the-way-of-water-2022/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-238/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/fight-club-1999/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/movie-76341/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/the-godfather-1972/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/tv-1396/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/movie/mad-max-fury-road-2015/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/tv-1399/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/tv/breaking-bad-2008/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/tv-100088/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/tv/game-of-thrones-2011/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/tv-66732/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/tv/the-last-of-us-2023/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/tv-tt39334604/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/tv/stranger-things-2016/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/tv-87108/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/tv/delikanl-2026/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flixdok.xyz/title/tv-60625/</loc>
-    <lastmod>2026-05-11</lastmod>
+    <loc>https://flixdok.xyz/tv/chernobyl-2019/</loc>
+    <lastmod>2026-05-12</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://flixdok.xyz/tv/rick-and-morty-2013/</loc>
+    <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>

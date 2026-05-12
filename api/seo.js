@@ -32,6 +32,43 @@ function mediaDate(data, type) {
   return type === "tv" ? data.first_air_date || "" : data.release_date || "";
 }
 
+function normalizeSearch(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function slugify(value) {
+  return normalizeSearch(value)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function titleCaseFromSlug(slug) {
+  return String(slug || "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function titleSlugFromData(data, type) {
+  const title = mediaTitle(data, type) || "title";
+  const year = String(mediaDate(data, type)).slice(0, 4);
+  return slugify(`${title}${year ? ` ${year}` : ""}`);
+}
+
+function queryFromSlug(slug) {
+  return String(slug || "")
+    .replace(/\/+$/, "")
+    .replace(/-\d{4}$/, "")
+    .replace(/-/g, " ")
+    .trim();
+}
+
 function compactDescription(value, fallback = DEFAULT_DESCRIPTION) {
   const text = String(value || fallback).replace(/\s+/g, " ").trim();
   if (text.length <= 160) return text;
@@ -70,7 +107,7 @@ function readIndex() {
       // Try the next runtime path.
     }
   }
-  return '<!doctype html><html lang="en"><head><base href="/"><title>FlixDok</title><link rel="stylesheet" href="/styles.css"></head><body><div id="homeScreen"></div><script src="/app.js?v=20260511-seo" defer></script></body></html>';
+  return '<!doctype html><html lang="en"><head><base href="/"><title>FlixDok</title><link rel="stylesheet" href="/styles.css"></head><body><div id="homeScreen"></div><script src="/app.js?v=20260512-platform" defer></script></body></html>';
 }
 
 function replaceOrInsert(html, matcher, tag) {
@@ -113,6 +150,24 @@ async function fetchJson(url) {
   return response.json();
 }
 
+function pickSearchMatch(type, slug, results = []) {
+  const query = normalizeSearch(queryFromSlug(slug));
+  const year = String(slug || "").match(/-(\d{4})$/)?.[1] || "";
+  return [...results]
+    .map((item) => {
+      const title = mediaTitle(item, type);
+      const itemYear = String(mediaDate(item, type)).slice(0, 4);
+      const titleKey = normalizeSearch(title);
+      let score = Number(item.popularity || 0);
+      if (titleKey === query) score += 100;
+      if (titleKey.startsWith(query)) score += 35;
+      if (titleKey.includes(query)) score += 18;
+      if (year && itemYear === year) score += 45;
+      return { item, score };
+    })
+    .sort((a, b) => b.score - a.score)[0]?.item;
+}
+
 function pickFindMatch(type, data) {
   const results = type === "tv" ? data?.tv_results || [] : data?.movie_results || [];
   return [...results].sort((a, b) => Number(b.popularity || 0) - Number(a.popularity || 0))[0] || null;
@@ -126,29 +181,31 @@ async function resolveImdbToTmdb(type, imdbId) {
   return match?.id ? String(match.id) : "";
 }
 
-async function fetchTitleSeo(id) {
-  const value = String(id || "").replace(/\/+$/, "");
-  const numericMatch = value.match(/^(movie|tv)-(\d+)$/);
-  const imdbMatch = value.match(/^(movie|tv)-(tt\d+)$/i);
-  const type = numericMatch?.[1] || imdbMatch?.[1];
-  let tmdbId = numericMatch?.[2] || "";
-
-  if (!type) return null;
-  if (!tmdbId && imdbMatch) tmdbId = await resolveImdbToTmdb(type, imdbMatch[2]);
-  if (!tmdbId) return null;
-
-  const data = await fetchJson(`${TMDB_PROXY}/${type}/${tmdbId}`);
+function buildTitleSeo(type, tmdbId, data, routeOverride = "") {
   if (!data) return null;
   const isTv = type === "tv";
   const title = mediaTitle(data, type);
   if (!title) return null;
   const year = String(mediaDate(data, type)).slice(0, 4);
   const mediaLabel = isTv ? "TV Show" : "Movie";
-  const route = cleanPath(`/title/${type}-${tmdbId}`);
-  const description = compactDescription(data.overview, `Watch ${title} on ${APP_NAME}. View ratings, posters, cast, and ${isTv ? "episodes" : "movie"} details.`);
+  const route = routeOverride || cleanPath(`/${isTv ? "tv" : "movie"}/${titleSlugFromData(data, type)}`);
+  const description = compactDescription(data.overview, `Watch ${title} on ${APP_NAME}. View ratings, posters, cast, recommendations, and ${isTv ? "episode guides" : "movie details"}.`);
   const image = imageUrl(data.backdrop_path || data.poster_path, "original") || DEFAULT_IMAGE;
   const poster = imageUrl(data.poster_path, "w500") || image;
-  const keywords = seoKeywords([title, data.original_title, data.original_name, mediaLabel, year, ...(data.genres || []).map((genre) => genre.name), APP_NAME]);
+  const genres = (data.genres || []).map((genre) => genre.name).filter(Boolean);
+  const keywords = seoKeywords([
+    title,
+    data.original_title,
+    data.original_name,
+    mediaLabel,
+    year,
+    ...genres,
+    "watch online",
+    "ratings",
+    "cast",
+    "trailer",
+    APP_NAME,
+  ]);
 
   return {
     title: `${title} (${year || mediaLabel}) - Watch ${mediaLabel} on ${APP_NAME}`,
@@ -165,7 +222,7 @@ async function fetchTitleSeo(id) {
       image: poster,
       description,
       datePublished: year || undefined,
-      genre: (data.genres || []).map((genre) => genre.name),
+      genre: genres,
       aggregateRating: data.vote_average
         ? {
             "@type": "AggregateRating",
@@ -173,6 +230,68 @@ async function fetchTitleSeo(id) {
             bestRating: "10",
           }
         : undefined,
+      potentialAction: {
+        "@type": "WatchAction",
+        target: absoluteUrl(route),
+      },
+      identifier: tmdbId ? `tmdb:${tmdbId}` : undefined,
+    },
+  };
+}
+
+async function fetchTitleSeo(id) {
+  const value = String(id || "").replace(/\/+$/, "");
+  const numericMatch = value.match(/^(movie|tv)-(\d+)$/);
+  const imdbMatch = value.match(/^(movie|tv)-(tt\d+)$/i);
+  const type = numericMatch?.[1] || imdbMatch?.[1];
+  let tmdbId = numericMatch?.[2] || "";
+
+  if (!type) return null;
+  if (!tmdbId && imdbMatch) tmdbId = await resolveImdbToTmdb(type, imdbMatch[2]);
+  if (!tmdbId) return null;
+
+  const data = await fetchJson(`${TMDB_PROXY}/${type}/${tmdbId}`);
+  return buildTitleSeo(type, tmdbId, data, cleanPath(`/title/${type}-${tmdbId}`));
+}
+
+async function fetchSlugSeo(type, slug) {
+  const cleanSlug = String(slug || "").replace(/\/+$/, "");
+  const query = queryFromSlug(cleanSlug);
+  if (!query || (type !== "movie" && type !== "tv")) return null;
+  const searchUrl = new URL(`${TMDB_PROXY}/search/${type}`);
+  searchUrl.searchParams.set("query", query);
+  const searchData = await fetchJson(searchUrl.toString());
+  const match = pickSearchMatch(type, cleanSlug, searchData?.results || []);
+  if (!match?.id) return null;
+  const data = await fetchJson(`${TMDB_PROXY}/${type}/${match.id}`);
+  return buildTitleSeo(type, String(match.id), data, cleanPath(`/${type === "tv" ? "tv" : "movie"}/${cleanSlug}`));
+}
+
+async function fetchActorSeo(slug) {
+  const actorName = titleCaseFromSlug(String(slug || "").replace(/\/+$/, ""));
+  if (!actorName) return null;
+  const searchUrl = new URL(`${TMDB_PROXY}/search/person`);
+  searchUrl.searchParams.set("query", actorName);
+  const searchData = await fetchJson(searchUrl.toString());
+  const person =
+    (searchData?.results || []).find((entry) => normalizeSearch(entry.name) === normalizeSearch(actorName)) ||
+    searchData?.results?.[0] ||
+    null;
+  const name = person?.name || actorName;
+  const image = imageUrl(person?.profile_path, "w500") || DEFAULT_IMAGE;
+  const route = cleanPath(`/actor/${slug}`);
+  return {
+    title: `${name} Movies & Shows - ${APP_NAME}`,
+    description: `Browse ${name} movies and TV shows on ${APP_NAME} with ratings, posters, cast links, similar titles, and recommendations.`,
+    keywords: seoKeywords([name, `${name} movies`, `${name} TV shows`, "filmography", "actor movies", "cast", "ratings", APP_NAME]),
+    url: absoluteUrl(route),
+    image,
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: `${name} Movies & Shows`,
+      about: { "@type": "Person", name },
+      url: absoluteUrl(route),
     },
   };
 }
@@ -216,6 +335,41 @@ function staticSeo(route, value = "") {
     };
   }
 
+  if (route === "genre") {
+    const slug = String(value || "").replace(/\/+$/, "");
+    const label = `${titleCaseFromSlug(slug || "action")} Movies`;
+    return {
+      title: `${label} - ${APP_NAME}`,
+      description: `Browse ${label.toLowerCase()} on ${APP_NAME} with ratings, posters, filters, recommendations, and watchlist support.`,
+      keywords: seoKeywords([label, slug, "movies", "genre", "ratings", "recommendations", APP_NAME]),
+      url: absoluteUrl(`/genre/${slug || "action"}/`),
+      structuredData: {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: label,
+        url: absoluteUrl(`/genre/${slug || "action"}/`),
+      },
+    };
+  }
+
+  if (route === "actor") {
+    const slug = String(value || "").replace(/\/+$/, "");
+    const label = titleCaseFromSlug(slug || "actor");
+    return {
+      title: `${label} Movies & Shows - ${APP_NAME}`,
+      description: `Browse ${label} movies and TV shows on ${APP_NAME} with ratings, posters, cast links, and recommendations.`,
+      keywords: seoKeywords([label, "actor", "filmography", "movies", "TV shows", "cast", APP_NAME]),
+      url: absoluteUrl(`/actor/${slug}/`),
+      structuredData: {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: `${label} Movies & Shows`,
+        about: { "@type": "Person", name: label },
+        url: absoluteUrl(`/actor/${slug}/`),
+      },
+    };
+  }
+
   return routeMap[route] || {
     title: APP_NAME,
     description: DEFAULT_DESCRIPTION,
@@ -237,7 +391,23 @@ module.exports = async function handler(request, response) {
     }
   }
 
-  if (!seo) seo = staticSeo(route, request.query?.category);
+  if (route === "movie" || route === "tvslug") {
+    try {
+      seo = await fetchSlugSeo(route === "movie" ? "movie" : "tv", request.query?.slug);
+    } catch {
+      seo = null;
+    }
+  }
+
+  if (route === "actor") {
+    try {
+      seo = await fetchActorSeo(request.query?.slug);
+    } catch {
+      seo = null;
+    }
+  }
+
+  if (!seo) seo = staticSeo(route, request.query?.category || request.query?.slug);
   seo = {
     image: DEFAULT_IMAGE,
     type: "website",

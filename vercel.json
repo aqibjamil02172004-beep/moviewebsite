@@ -34,6 +34,22 @@
   },
   "rewrites": [
     {
+      "source": "/movie/:slug*",
+      "destination": "/api/seo?route=movie&slug=:slug*"
+    },
+    {
+      "source": "/tv/:slug*",
+      "destination": "/api/seo?route=tvslug&slug=:slug*"
+    },
+    {
+      "source": "/genre/:slug*",
+      "destination": "/api/seo?route=genre&slug=:slug*"
+    },
+    {
+      "source": "/actor/:slug*",
+      "destination": "/api/seo?route=actor&slug=:slug*"
+    },
+    {
       "source": "/title/:id*",
       "destination": "/api/seo?route=title&id=:id*"
     },
